@@ -3,8 +3,17 @@ import os
 
 load_dotenv()
 
-# Gemini AI
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+# LLM Configs
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+PATEWAY_API_KEY = os.getenv("PATEWAY_API_KEY", "")
+PATEWAY_BASE_URL = os.getenv("PATEWAY_BASE_URL", "https://api.pateway.ai/v1")
+PATEWAY_MODEL = os.getenv("PATEWAY_MODEL", "gpt-5.5")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
+LLM_PROVIDERS = os.getenv("LLM_PROVIDERS", "gemini,pateway,openai,claude")
 
 # Meta
 META_APP_ID = os.environ["META_APP_ID"]
