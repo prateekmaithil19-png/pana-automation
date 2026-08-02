@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}สร้างโพสต์ใหม่ — Pana Studio{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>📸 สร้างโพสต์ใหม่</h1>
+
+  {% if success %}
+  <div class="alert-success">
+    ✅ ส่งคำขออนุมัติเรียบร้อยแล้วค่ะ! ระบบส่ง email และ Line Notify ให้ admin แล้ว<br>
+    <small>Approval ID: {{ approval_id }}</small>
+  </div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data">
+    <label>📝 Caption</label>
+    <textarea name="caption" placeholder="เขียน caption สำหรับโพสต์..." required></textarea>
+
+    <label>📱 แพลตฟอร์ม (เลือกได้หลายอัน)</label>
+    <div class="checkboxes">
+      <label><input type="checkbox" name="platforms" value="facebook"> Facebook</label>
+      <label><input type="checkbox" name="platforms" value="instagram"> Instagram</label>
+      <label><input type="checkbox" name="platforms" value="line"> Line OA</label>
+    </div>
+
+    <label>🖼️ รูปภาพ (อัปโหลดไฟล์)</label>
+    <input type="file" name="image_file" accept="image/*">
+
+    <label>🔗 หรือใส่ URL รูปภาพ (ถ้ามี)</label>
+    <input type="url" name="image_url" placeholder="https://...">
+
+    <label>📅 กำหนดเวลาโพสต์ (UTC)</label>
+    <input type="datetime-local" name="scheduled_at" required>
+
+    <button type="submit" class="btn btn-green">📨 ส่งขออนุมัติ</button>
+  </form>
+</div>
+{% endblock %}

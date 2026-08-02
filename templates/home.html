@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Pana Studio — Dashboard{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>👋 Pana Studio Automation</h1>
+  <p style="color:#666;margin-bottom:20px;line-height:1.6;">
+    ระบบ automation ตอบลูกค้าอัตโนมัติบน Facebook, Instagram และ Line OA<br>
+    พร้อมระบบ approval สำหรับการส่งใบเสนอราคาและโพสต์โซเชียลมีเดีย
+  </p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px;">
+    <a href="/post" style="text-decoration:none;">
+      <div class="card" style="margin:0;text-align:center;padding:20px;">
+        <div style="font-size:32px;margin-bottom:8px;">📸</div>
+        <div style="font-weight:600;">สร้างโพสต์ใหม่</div>
+        <div style="font-size:13px;color:#888;margin-top:4px;">Schedule post → รอ approval</div>
+      </div>
+    </a>
+    <a href="/skills" style="text-decoration:none;">
+      <div class="card" style="margin:0;text-align:center;padding:20px;">
+        <div style="font-size:32px;margin-bottom:8px;">🧠</div>
+        <div style="font-weight:600;">Skills Dashboard</div>
+        <div style="font-size:13px;color:#888;margin-top:4px;">Lead / Sales / Marketing / Competitor</div>
+      </div>
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🔌 Webhook URLs (สำหรับตั้งค่า)</h2>
+  <div style="font-family:monospace;font-size:13px;line-height:2;">
+    <div><strong>Meta (FB + IG):</strong> <code>YOUR_APP_URL/webhook/meta</code></div>
+    <div><strong>Line OA:</strong> <code>YOUR_APP_URL/webhook/line</code></div>
+    <div><strong>Health check:</strong> <code>YOUR_APP_URL/health</code></div>
+  </div>
+</div>
+{% endblock %}

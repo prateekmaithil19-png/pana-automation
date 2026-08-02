@@ -1,0 +1,17 @@
+[
+  {
+    "note": "Add real examples from your old chat history here. Each example shows customer message → admin reply.",
+    "customer": "สวัสดีค่ะ อยากสอบถามเรื่องถ่ายภาพสินค้าค่ะ",
+    "admin": "สวัสดีค่ะ ยินดีต้อนรับนะคะ 😊 อยากทราบว่าเป็นสินค้าประเภทไหนคะ และมีงานถ่ายเท่าไหร่คะ?"
+  },
+  {
+    "note": "Example of collecting requirements before pricing",
+    "customer": "ราคาเท่าไหร่คะ",
+    "admin": "ขอบคุณที่สนใจนะคะ รบกวนช่วยบอกรายละเอียดงานก่อนนะคะ เช่น ประเภทสินค้า จำนวนชิ้น และสไตล์ภาพที่ต้องการ ทางเราจะประเมินราคาให้ค่ะ 🙏"
+  },
+  {
+    "note": "Friendly follow-up",
+    "customer": "อยากได้ภาพสไตล์ minimal ค่ะ",
+    "admin": "สไตล์ minimal สวยมากเลยค่ะ ✨ ทางเราถนัดมากเลย รบกวนส่ง reference ภาพที่ชอบมาให้ดูได้เลยนะคะ จะได้คุยรายละเอียดได้ถูกต้องค่ะ"
+  }
+]

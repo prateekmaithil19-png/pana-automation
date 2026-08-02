@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Review &amp; Approve — Pana Studio{% endblock %}
+{% block content %}
+<div class="card">
+  {% if approval.approval_type == "reply" %}
+    <h1>🔔 ลูกค้าถามราคา — รอการอนุมัติ</h1>
+
+    <div style="margin-bottom:8px;font-size:13px;color:#888;">
+      แพลตฟอร์ม: <strong>{{ approval.platform }}</strong> |
+      เวลา: {{ approval.created_at }}
+    </div>
+
+    <label>💬 ข้อความลูกค้า</label>
+    <div class="message-box">{{ approval.customer_message }}</div>
+
+    <label>🤖 AI ร่างตอบ</label>
+    <div class="message-box ai">{{ approval.ai_reply }}</div>
+
+    <div style="margin-top:20px;">
+      <a href="/approve/{{ approval_id }}/action?action=approve" class="btn btn-green">✅ อนุมัติ &amp; ส่งเลย</a>
+      <a href="/approve/{{ approval_id }}/action?action=reject" class="btn btn-red"
+         onclick="return confirm('ยืนยันยกเลิก?')">❌ ยกเลิก</a>
+    </div>
+
+    <hr style="margin:24px 0;border:none;border-top:1px solid #eee;">
+
+    <h2>✏️ แก้ไขข้อความก่อนส่ง</h2>
+    <form method="post" action="/approve/{{ approval_id }}/submit">
+      <label>ข้อความที่แก้ไขแล้ว</label>
+      <textarea name="edited_reply" rows="5">{{ approval.ai_reply }}</textarea>
+      <button type="submit" class="btn btn-blue">📨 ส่งข้อความที่แก้ไข</button>
+    </form>
+
+  {% elif approval.approval_type == "post" %}
+    <h1>📸 โพสต์ใหม่ — รอการอนุมัติ</h1>
+
+    <div style="margin-bottom:8px;font-size:13px;color:#888;">
+      แพลตฟอร์ม: <strong>{{ approval.platform }}</strong> |
+      เวลา: {{ approval.created_at }}
+    </div>
+
+    <label>📝 Caption</label>
+    <div class="message-box">{{ approval.ai_reply }}</div>
+
+    <div style="margin-top:20px;">
+      <a href="/approve/{{ approval_id }}/action?action=approve" class="btn btn-green">✅ อนุมัติโพสต์</a>
+      <a href="/approve/{{ approval_id }}/action?action=reject" class="btn btn-red"
+         onclick="return confirm('ยืนยันยกเลิก?')">❌ ยกเลิก</a>
+    </div>
+
+    <hr style="margin:24px 0;border:none;border-top:1px solid #eee;">
+
+    <h2>✏️ แก้ไข Caption ก่อนโพสต์</h2>
+    <form method="post" action="/approve/{{ approval_id }}/submit">
+      <label>Caption ที่แก้ไขแล้ว</label>
+      <textarea name="edited_reply" rows="6">{{ approval.ai_reply }}</textarea>
+      <button type="submit" class="btn btn-blue">📨 อนุมัติด้วย Caption ที่แก้ไข</button>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

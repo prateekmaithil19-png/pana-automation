@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Skills Dashboard — Pana Studio{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>🧠 Skills Dashboard</h1>
+  <p style="color:#666;margin-bottom:20px;">เลือก skill ที่ต้องการและกรอกข้อมูล AI จะร่างข้อความให้ตรวจสอบก่อนใช้งาน</p>
+
+  <!-- Skill Tabs -->
+  <div style="display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap;">
+    <a href="#lead" class="btn {% if active_skill == 'lead' %}btn-blue{% else %}btn-gray{% endif %}"
+       onclick="showTab('lead');return false;">📨 Lead Manager</a>
+    <a href="#sales" class="btn {% if active_skill == 'sales' %}btn-blue{% else %}btn-gray{% endif %}"
+       onclick="showTab('sales');return false;">💼 Sales Manager</a>
+    <a href="#marketing" class="btn {% if active_skill == 'marketing' %}btn-blue{% else %}btn-gray{% endif %}"
+       onclick="showTab('marketing');return false;">📣 Marketing</a>
+    <a href="#competitor" class="btn {% if active_skill == 'competitor' %}btn-blue{% else %}btn-gray{% endif %}"
+       onclick="showTab('competitor');return false;">🔍 Competitor</a>
+  </div>
+
+  <!-- Lead Manager -->
+  <div id="tab-lead" class="tab-panel" {% if active_skill and active_skill != 'lead' %}style="display:none"{% endif %}>
+    <h2>📨 Lead Manager — ร่าง DM ชักชวนลูกค้า</h2>
+    <p style="color:#666;font-size:13px;margin-bottom:16px;">
+      ใส่ข้อมูลธุรกิจเป้าหมาย (ชื่อแบรนด์, สินค้า, สไตล์) AI จะร่าง DM ที่ personalize ให้<br>
+      ⚠️ ข้อความนี้ต้องให้ admin ส่งเองเท่านั้น ห้ามส่งอัตโนมัติ
+    </p>
+    <form method="post" action="/skills/lead">
+      <label>ข้อมูลธุรกิจเป้าหมาย</label>
+      <textarea name="business_info" placeholder="เช่น: แบรนด์กระเป๋าหนัง ชื่อ LUMI BAGS ขาย Instagram @lumibags_th สไตล์ minimal สีนู้ด ราคา 800-1500 บาท ลูกค้าผู้หญิง 25-35 ปี" required>{% if active_skill == 'lead' %}{{ input_value }}{% endif %}</textarea>
+      <button type="submit" class="btn btn-blue">✨ ร่าง DM</button>
+    </form>
+  </div>
+
+  <!-- Sales Manager -->
+  <div id="tab-sales" class="tab-panel" {% if active_skill != 'sales' %}style="display:none"{% endif %}>
+    <h2>💼 Sales Manager — แนะนำวิธีปิดการขาย</h2>
+    <p style="color:#666;font-size:13px;margin-bottom:16px;">
+      วางบทสนทนาที่เกิดขึ้น AI จะแนะนำว่าควรตอบอะไรเพื่อปิดการขาย
+    </p>
+    <form method="post" action="/skills/sales">
+      <label>บทสนทนาปัจจุบัน + สถานะลูกค้า</label>
+      <textarea name="conversation" placeholder="เช่น: ลูกค้าสอบถามราคาถ่าย lookbook สินค้าแฟชั่น 20 ชิ้น เราเสนอราคา 15,000 บาท ลูกค้าบอกว่า 'แพงไปหน่อยค่ะ' — ควรตอบอะไร?" required>{% if active_skill == 'sales' %}{{ input_value }}{% endif %}</textarea>
+      <button type="submit" class="btn btn-blue">💡 ขอคำแนะนำ</button>
+    </form>
+  </div>
+
+  <!-- Marketing Manager -->
+  <div id="tab-marketing" class="tab-panel" {% if active_skill != 'marketing' %}style="display:none"{% endif %}>
+    <h2>📣 Marketing Manager — Caption / Ad Copy / Strategy</h2>
+    <p style="color:#666;font-size:13px;margin-bottom:16px;">
+      บอกสิ่งที่ต้องการ เช่น เขียน caption โพสต์, แนะนำ hashtag, เขียน ad copy หรือวางแผน content
+    </p>
+    <form method="post" action="/skills/marketing">
+      <label>สิ่งที่ต้องการให้ทำ</label>
+      <textarea name="brief" placeholder="เช่น: เขียน caption สำหรับโพสต์ lookbook ใหม่ สไตล์ pastel ลูกค้าเป็นแบรนด์ชาหน้าร้าน ถ่ายที่สตูดิโอ พร้อม hashtag" required>{% if active_skill == 'marketing' %}{{ input_value }}{% endif %}</textarea>
+      <button type="submit" class="btn btn-blue">✏️ สร้าง Content</button>
+    </form>
+  </div>
+
+  <!-- Competitor Analysis -->
+  <div id="tab-competitor" class="tab-panel" {% if active_skill != 'competitor' %}style="display:none"{% endif %}>
+    <h2>🔍 Competitor Analysis</h2>
+    <p style="color:#666;font-size:13px;margin-bottom:16px;">
+      วางข้อมูลคู่แข่ง (จาก Instagram, website, หรือที่รู้มา) AI จะวิเคราะห์และหาช่องว่างตลาด
+    </p>
+    <form method="post" action="/skills/competitor">
+      <label>ข้อมูลคู่แข่ง</label>
+      <textarea name="competitor_info" placeholder="เช่น: สตูดิโอ XYZ Instagram @xyz_studio โพสต์ทุกวัน ราคา brand photoshoot 5,000 บาท/session เน้น flat lay ลูกค้าส่วนใหญ่เป็น food brand" required>{% if active_skill == 'competitor' %}{{ input_value }}{% endif %}</textarea>
+      <button type="submit" class="btn btn-blue">🔍 วิเคราะห์</button>
+    </form>
+  </div>
+</div>
+
+{% if result %}
+<div class="card">
+  <h2>{{ result_title or "ผลลัพธ์" }}</h2>
+  <div class="message-box ai" style="white-space:pre-wrap;">{{ result }}</div>
+  <button onclick="navigator.clipboard.writeText(document.querySelector('.message-box.ai').innerText)"
+          class="btn btn-gray" style="margin-top:8px;">📋 คัดลอก</button>
+</div>
+{% endif %}
+
+<script>
+function showTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(el => el.style.display = 'none');
+  document.getElementById('tab-' + name).style.display = 'block';
+}
+{% if active_skill %}
+showTab('{{ active_skill }}');
+{% endif %}
+</script>
+{% endblock %}
