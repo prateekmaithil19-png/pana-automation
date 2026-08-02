@@ -37,12 +37,28 @@ async def generate_reply(
         contents.append(types.Content(role=role, parts=[types.Part(text=turn["content"])]))
     contents.append(types.Content(role="user", parts=[types.Part(text=customer_message)]))
 
+    safety = [
+        types.SafetySetting(
+            category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+            threshold=types.HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        ),
+        types.SafetySetting(
+            category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+            threshold=types.HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        ),
+    ]
+
     response = await _client.aio.models.generate_content(
         model=_MODEL,
         contents=contents,
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
             max_output_tokens=max_tokens,
+            safety_settings=safety,
         ),
     )
-    return _clean_reply(response.text)
+
+    text = response.text
+    if not text:
+        return "ขอบคุณที่สอบถามนะคะ 🙏 ทางเราจะติดต่อกลับเร็วๆ นี้ค่ะ"
+    return _clean_reply(text)
