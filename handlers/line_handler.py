@@ -10,8 +10,10 @@ from fastapi.responses import JSONResponse
 import config
 from ai.classifier import is_pricing_request
 from ai.engine import generate_reply
+from ai.prompts import build_system_prompt
 from approval.store import create_reply_approval
 from database.db import add_message, get_conversation
+from memory.customer_context import build_customer_context
 from notifications.email_notify import send_reply_approval_email
 from notifications.line_notify import notify_reply_approval
 
@@ -43,8 +45,11 @@ async def _handle_line_message(user_id: str, text: str, reply_token: str):
     history = await get_conversation("line", user_id)
     await add_message("line", user_id, "customer", text)
 
+    customer_memory = await build_customer_context("line", user_id)
+    system_prompt = build_system_prompt(customer_memory=customer_memory)
+
     if is_pricing_request(text):
-        ai_reply = await generate_reply(text, history)
+        ai_reply = await generate_reply(text, history, system_prompt=system_prompt)
         approval_id = await create_reply_approval("line", user_id, text, ai_reply)
 
         # Acknowledge the customer immediately while admin reviews
@@ -60,7 +65,7 @@ async def _handle_line_message(user_id: str, text: str, reply_token: str):
         except Exception:
             logger.exception("Line Notify failed")
     else:
-        ai_reply = await generate_reply(text, history)
+        ai_reply = await generate_reply(text, history, system_prompt=system_prompt)
         await add_message("line", user_id, "assistant", ai_reply)
         await _line_reply(reply_token, ai_reply)
 

@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from ai.engine import generate_reply
-from ai.skills import (
+from skills import (
     build_competitor_prompt,
     build_lead_prompt,
     build_marketing_prompt,

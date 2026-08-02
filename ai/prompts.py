@@ -1,16 +1,26 @@
 import json
 import os
 
-_FAQ_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "faq.md")
-_EXAMPLES_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "chat_examples.json")
+_BASE = os.path.join(os.path.dirname(__file__), "..")
+_FAQ_PATH = os.path.join(_BASE, "knowledge", "faq.md")
+_EXAMPLES_PATH = os.path.join(_BASE, "knowledge", "chat_examples.json")
+_PROFILE_PATH = os.path.join(_BASE, "knowledge", "business_profile.md")
 
 
-def _load_faq() -> str:
+def _load_file(path: str) -> str:
     try:
-        with open(_FAQ_PATH, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
         return ""
+
+
+def _load_faq() -> str:
+    return _load_file(_FAQ_PATH)
+
+
+def _load_profile() -> str:
+    return _load_file(_PROFILE_PATH)
 
 
 def _load_examples() -> str:
@@ -27,8 +37,9 @@ def _load_examples() -> str:
         return ""
 
 
-def build_system_prompt() -> str:
+def build_system_prompt(customer_memory: str = "") -> str:
     faq = _load_faq()
+    profile = _load_profile()
     examples = _load_examples()
 
     return f"""You are a friendly and professional admin assistant for Pana Studio — a commercial photography studio in Bangkok, Thailand.
@@ -69,9 +80,13 @@ TYPE 2 — Custom project quotation (defer to admin):
 - When they say "send me a quote" / "prepare a quotation" / "ใบเสนอราคา"
 → For these, gather their requirements first, then say "we'll prepare a quotation for you"
 
-## Business Info & FAQ
+## Studio Profile
+{profile}
+
+## Business Info, Pricing & FAQ
 {faq}
 
 ## Example conversations (style reference)
 {examples}
-"""
+
+{customer_memory}"""
