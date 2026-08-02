@@ -39,8 +39,23 @@ async def init_db():
                 status TEXT DEFAULT 'pending_approval',  -- 'pending_approval' | 'approved' | 'posted' | 'rejected'
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS leads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contact_date TEXT,
+                contact_name TEXT,
+                brand TEXT,
+                channel TEXT,
+                shoot_date TEXT,
+                notes TEXT,
+                email TEXT,
+                status TEXT DEFAULT 'new',  -- 'new' | 'follow_up' | 'in_progress' | 'paid' | 'rejected' | 'no_response'
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
         """)
         await db.commit()
+    await _seed_leads()
 
 
 async def add_message(platform: str, user_id: str, role: str, message: str):
@@ -186,3 +201,141 @@ async def get_approved_posts() -> list[dict]:
         d["platforms"] = json.loads(d["platforms"])
         result.append(d)
     return result
+
+
+# ── Leads CRM ────────────────────────────────────────────────────────────────
+
+async def get_leads(status: str | None = None) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if status and status != "all":
+            async with db.execute(
+                "SELECT * FROM leads WHERE status=? ORDER BY contact_date DESC, id DESC",
+                (status,),
+            ) as cur:
+                rows = await cur.fetchall()
+        else:
+            async with db.execute(
+                "SELECT * FROM leads ORDER BY contact_date DESC, id DESC"
+            ) as cur:
+                rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def add_lead(data: dict) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """INSERT INTO leads (contact_date, contact_name, brand, channel, shoot_date, notes, email, status)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (
+                data.get("contact_date", ""),
+                data.get("contact_name", ""),
+                data.get("brand", ""),
+                data.get("channel", ""),
+                data.get("shoot_date", ""),
+                data.get("notes", ""),
+                data.get("email", ""),
+                data.get("status", "new"),
+            ),
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def update_lead_status(lead_id: int, status: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE leads SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (status, lead_id),
+        )
+        await db.commit()
+
+
+async def update_lead(lead_id: int, data: dict):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """UPDATE leads SET contact_date=?, contact_name=?, brand=?, channel=?,
+               shoot_date=?, notes=?, email=?, status=?, updated_at=CURRENT_TIMESTAMP
+               WHERE id=?""",
+            (
+                data.get("contact_date", ""),
+                data.get("contact_name", ""),
+                data.get("brand", ""),
+                data.get("channel", ""),
+                data.get("shoot_date", ""),
+                data.get("notes", ""),
+                data.get("email", ""),
+                data.get("status", "new"),
+                lead_id,
+            ),
+        )
+        await db.commit()
+
+
+async def delete_lead(lead_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM leads WHERE id=?", (lead_id,))
+        await db.commit()
+
+
+async def _seed_leads():
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT COUNT(*) FROM leads") as cur:
+            count = (await cur.fetchone())[0]
+    if count > 0:
+        return
+    seed = [
+        ("2024-09-21","Ploy","No Brand","Line OA","November 2","Whey Protein / 2 models","","paid"),
+        ("2024-09-21","Earn","","Line OA","","","","new"),
+        ("2024-09-21","F","","Line OA","","","","new"),
+        ("2024-09-21","Jusmin","Sandei Studio","Line OA","","Cloths","","new"),
+        ("2024-09-22","Tina","Navara Jewelry","Line OA","November","","","new"),
+        ("2024-09-23","Saipahn","Pattama","Line OA","","Cloths","","new"),
+        ("2024-09-29","F","","Line OA","","","","new"),
+        ("2024-09-30","Art","","Line OA","","Photographer","","new"),
+        ("2024-10-01","Ruji","","Line OA","","","","new"),
+        ("2024-10-02","Houze","","Line OA","","Photographer","","new"),
+        ("2024-10-02","Auiiaui","","Line OA","","","","new"),
+        ("2024-10-02","BossAK","","Line OA","","","","new"),
+        ("2024-10-02","Janet","","Line OA","","Shoes","","no_response"),
+        ("2024-10-02","Kikie","","Line OA","29/10","Body Oil","","new"),
+        ("2024-10-03","Auey","","Line OA","","","","new"),
+        ("2024-10-03","Farida","Urbana Studios","Line OA","","Offer Olena","","rejected"),
+        ("2024-10-03","","Cocomill.brand","Instagram","","New Collection Mid Oct / Shoot mom and kid","","paid"),
+        ("2024-10-04","Fah","Sky Handbag","Instagram","","Thai Model only","","paid"),
+        ("2024-10-04","","ภูมิใจ","Instagram","","Negotiate","","follow_up"),
+        ("2024-10-04","Eveandboy","Eveandboy","Email","","Company Profile","marketing@eveandboy.com","in_progress"),
+        ("2024-10-04","Jaruwan","Chobdress","Line OA","","New brand / shirts","","new"),
+        ("2024-10-04","Yo","Palilyn Jewelry","Line OA","","Earring","","new"),
+        ("2024-10-04","Chompu","","Line OA","","Offer Olena 3 looks","","follow_up"),
+        ("2024-10-04","Khong Kwan","","Line OA","","No answer keep following","","rejected"),
+        ("2024-10-04","","Welry Accessories","Instagram","","1 look 2 jewelry offer","","follow_up"),
+        ("2024-10-04","","Jubilee Diamond","Email","","Company Profile","contact@jubileediamond.co.th","in_progress"),
+        ("2024-10-04","Juv","","Line OA","","","","new"),
+        ("2024-10-04","Fon","Regenelle","Line OA","","2-3 looks","","new"),
+        ("2024-10-04","","Bewish Anana","Instagram","","1 look","","new"),
+        ("2024-10-16","Namwan","","Line OA","29/10","Dress","","in_progress"),
+        ("2024-10-17","Bo Chi Chi","","Line OA","29/10","","","follow_up"),
+        ("2024-10-17","Khun Jub","","Line OA","29/10","","","follow_up"),
+        ("2024-10-17","Thidaphon","","Line OA","29/10","2 looks","","follow_up"),
+        ("2024-10-17","Stamping","","Line OA","29/10","","","follow_up"),
+        ("2024-10-17","Mookmik","","Line OA","29/10","","","in_progress"),
+        ("2024-10-18","Shatamp","","Line OA","","Thai Model only","","new"),
+        ("2024-10-18","M","","Line OA","29/10","","","follow_up"),
+        ("2024-10-18","NamFah","Blanc du Nil","Line OA","29/10","1 look","","paid"),
+        ("2024-10-18","Rabbit","","Line OA","29/10","4 Bags","","in_progress"),
+        ("2024-10-18","Mai","","Line OA","29/10","Street Shoot","","new"),
+        ("2024-10-18","Bumbim","","Line OA","29/10","170 cm height concern","","new"),
+        ("2024-10-18","Parwenapat","","Line OA","29/10","","","follow_up"),
+        ("2024-10-19","Nice","","Line OA","29/10","","","follow_up"),
+        ("2024-10-18","กานต์","Wanderlust Stylish","Instagram","30/10","Sent Email","karnkanyapak.work@gmail.com","follow_up"),
+        ("2024-10-18","Fon","Jin.BKK","Instagram","29/10","","","paid"),
+        ("2024-10-19","Auri","Maison de Auri","Instagram","29/10","","","paid"),
+    ]
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.executemany(
+            """INSERT INTO leads (contact_date, contact_name, brand, channel, shoot_date, notes, email, status)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            seed,
+        )
+        await db.commit()
