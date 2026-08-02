@@ -3,8 +3,8 @@ import os
 
 load_dotenv()
 
-# Claude AI
-ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
+# Gemini AI
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 
 # Meta
 META_APP_ID = os.environ["META_APP_ID"]
