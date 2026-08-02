@@ -123,6 +123,11 @@ async def publish_approved_posts():
                     await _post_to_instagram(caption, image_url)
                 elif platform == "line":
                     await _post_to_line_oa(caption, image_url)
+                elif platform == "tiktok":
+                    logger.warning(
+                        "TikTok platform selected but TikTok Content Posting API not yet configured. "
+                        "Apply at developers.tiktok.com to enable auto-posting."
+                    )
             except Exception as exc:
                 logger.exception("Failed to post to %s: %s", platform, exc)
                 errors.append(platform)

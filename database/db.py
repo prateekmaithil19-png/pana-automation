@@ -131,6 +131,47 @@ async def update_post_status(post_id: str, status: str):
         await db.commit()
 
 
+async def get_upcoming_posts() -> list[dict]:
+    import json
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT * FROM scheduled_posts
+               WHERE status IN ('pending_approval','approved')
+               ORDER BY scheduled_at ASC"""
+        ) as cur:
+            rows = await cur.fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["platforms"] = json.loads(d["platforms"])
+        result.append(d)
+    return result
+
+
+async def get_next_suggested_slot(gap_days: float = 1.5) -> str:
+    """Return ISO datetime string for the next suggested post slot."""
+    from datetime import datetime, timedelta
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT MAX(scheduled_at) FROM scheduled_posts
+               WHERE status NOT IN ('rejected')"""
+        ) as cur:
+            row = await cur.fetchone()
+    last = row[0] if row and row[0] else None
+    if last:
+        try:
+            base = datetime.fromisoformat(last)
+        except ValueError:
+            base = datetime.utcnow()
+    else:
+        base = datetime.utcnow()
+    next_slot = base + timedelta(days=gap_days)
+    # Round to nearest hour for cleaner UX
+    next_slot = next_slot.replace(minute=0, second=0, microsecond=0)
+    return next_slot.strftime("%Y-%m-%dT%H:%M")
+
+
 async def get_approved_posts() -> list[dict]:
     import json
     async with aiosqlite.connect(DB_PATH) as db:

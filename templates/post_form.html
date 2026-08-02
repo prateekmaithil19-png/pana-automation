@@ -6,32 +6,87 @@
 
   {% if success %}
   <div class="alert-success">
-    ✅ ส่งคำขออนุมัติเรียบร้อยแล้วค่ะ! ระบบส่ง email และ Line Notify ให้ admin แล้ว<br>
+    ✅ ส่งคำขออนุมัติเรียบร้อยแล้วค่ะ! Admin จะได้รับ email + Line Notify<br>
     <small>Approval ID: {{ approval_id }}</small>
   </div>
   {% endif %}
 
+  <!-- AI Caption Generator -->
+  <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:18px;margin-bottom:24px;">
+    <h2 style="color:#0369a1;margin-bottom:12px;">✨ สร้าง Caption ด้วย AI</h2>
+    <label>บอก AI ว่าโพสต์นี้เกี่ยวกับอะไร</label>
+    <textarea id="brief" placeholder="เช่น: โปรโมชั่น One Stop Service เดือนนี้, ลดราคา 10% ถ่ายสินค้าแฟชั่น, mood สวยๆ สีพาสเทล..." style="min-height:80px;"></textarea>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <select id="platform_hint" style="width:auto;margin-bottom:0;">
+        <option value="Instagram">Instagram</option>
+        <option value="Facebook">Facebook</option>
+        <option value="Line OA">Line OA</option>
+        <option value="TikTok">TikTok</option>
+        <option value="Instagram/Facebook">Instagram + Facebook</option>
+      </select>
+      <button type="button" onclick="generateCaption()" class="btn btn-blue" id="genBtn">✨ Generate Caption</button>
+      <span id="genStatus" style="font-size:13px;color:#6b7280;"></span>
+    </div>
+  </div>
+
+  <!-- Post Form -->
   <form method="post" enctype="multipart/form-data">
     <label>📝 Caption</label>
-    <textarea name="caption" placeholder="เขียน caption สำหรับโพสต์..." required></textarea>
+    <textarea name="caption" id="captionField" placeholder="เขียน caption เอง หรือ generate จาก AI ด้านบน..." required style="min-height:140px;"></textarea>
 
     <label>📱 แพลตฟอร์ม (เลือกได้หลายอัน)</label>
     <div class="checkboxes">
       <label><input type="checkbox" name="platforms" value="facebook"> Facebook</label>
       <label><input type="checkbox" name="platforms" value="instagram"> Instagram</label>
       <label><input type="checkbox" name="platforms" value="line"> Line OA</label>
+      <label><input type="checkbox" name="platforms" value="tiktok"> TikTok <span style="font-size:11px;color:#f59e0b;">(API pending)</span></label>
     </div>
 
     <label>🖼️ รูปภาพ (อัปโหลดไฟล์)</label>
-    <input type="file" name="image_file" accept="image/*">
+    <input type="file" name="image_file" accept="image/*,video/*">
 
     <label>🔗 หรือใส่ URL รูปภาพ (ถ้ามี)</label>
     <input type="url" name="image_url" placeholder="https://...">
 
-    <label>📅 กำหนดเวลาโพสต์ (UTC)</label>
-    <input type="datetime-local" name="scheduled_at" required>
+    <label>📅 กำหนดเวลาโพสต์ (UTC) — AI แนะนำ: ทุก 1-2 วัน</label>
+    <input type="datetime-local" name="scheduled_at" id="scheduledAt" value="{{ next_slot }}" required>
+    <p style="font-size:12px;color:#6b7280;margin-top:-12px;margin-bottom:16px;">
+      ⏰ แนะนำ: {{ next_slot }} UTC (ห่างจากโพสต์ล่าสุด ~1.5 วัน)
+    </p>
 
     <button type="submit" class="btn btn-green">📨 ส่งขออนุมัติ</button>
+    <a href="/calendar" class="btn btn-gray">📅 ดู Content Calendar</a>
   </form>
 </div>
+
+<script>
+async function generateCaption() {
+  const brief = document.getElementById('brief').value.trim();
+  if (!brief) { alert('กรุณากรอกรายละเอียดก่อนนะคะ'); return; }
+
+  const btn = document.getElementById('genBtn');
+  const status = document.getElementById('genStatus');
+  btn.disabled = true;
+  btn.textContent = '⏳ กำลังสร้าง...';
+  status.textContent = '';
+
+  try {
+    const fd = new FormData();
+    fd.append('brief', brief);
+    fd.append('platform_hint', document.getElementById('platform_hint').value);
+    const res = await fetch('/post/generate-caption', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error('API error ' + res.status);
+    const data = await res.json();
+    document.getElementById('captionField').value = data.caption;
+    status.textContent = '✅ Caption พร้อมแล้ว — แก้ไขได้ก่อนส่ง';
+    status.style.color = '#16a34a';
+  } catch (e) {
+    status.textContent = '❌ Error: ' + e.message;
+    status.style.color = '#dc2626';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✨ Generate Caption';
+  }
+}
+</script>
 {% endblock %}

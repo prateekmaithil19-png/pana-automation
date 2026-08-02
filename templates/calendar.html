@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Content Calendar — Pana Studio{% endblock %}
+{% block content %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+    <h1>📅 Content Calendar</h1>
+    <a href="/post" class="btn btn-blue">+ สร้างโพสต์ใหม่</a>
+  </div>
+
+  {% if not posts %}
+  <div style="text-align:center;padding:40px;color:#9ca3af;">
+    <div style="font-size:48px;margin-bottom:12px;">📭</div>
+    <p>ยังไม่มีโพสต์ที่กำหนดเวลาไว้</p>
+    <a href="/post" class="btn btn-green" style="margin-top:12px;">สร้างโพสต์แรก</a>
+  </div>
+  {% else %}
+
+  <div style="overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      <thead>
+        <tr style="border-bottom:2px solid #e5e7eb;text-align:left;">
+          <th style="padding:10px 12px;color:#6b7280;font-weight:600;">📅 วันเวลา (UTC)</th>
+          <th style="padding:10px 12px;color:#6b7280;font-weight:600;">📝 Caption</th>
+          <th style="padding:10px 12px;color:#6b7280;font-weight:600;">📱 แพลตฟอร์ม</th>
+          <th style="padding:10px 12px;color:#6b7280;font-weight:600;">สถานะ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for post in posts %}
+        <tr style="border-bottom:1px solid #f3f4f6;">
+          <td style="padding:12px;white-space:nowrap;color:#374151;font-size:13px;">
+            {{ post.scheduled_at[:16].replace('T',' ') }}
+          </td>
+          <td style="padding:12px;max-width:340px;">
+            <div style="overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.5;color:#111827;">
+              {{ post.caption }}
+            </div>
+            {% if post.image_path %}
+            <div style="font-size:11px;color:#9ca3af;margin-top:4px;">🖼️ มีรูปภาพ</div>
+            {% endif %}
+          </td>
+          <td style="padding:12px;">
+            <div style="display:flex;flex-wrap:wrap;gap:4px;">
+              {% for p in post.platforms %}
+              <span style="
+                background:{{'#1877f2' if p=='facebook' else '#e1306c' if p=='instagram' else '#00c300' if p=='line' else '#010101'}};
+                color:#fff;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;">
+                {{ p | upper }}
+              </span>
+              {% endfor %}
+            </div>
+          </td>
+          <td style="padding:12px;">
+            {% if post.status == 'approved' %}
+            <span style="background:#dcfce7;color:#15803d;font-size:12px;padding:3px 10px;border-radius:20px;font-weight:600;">✅ อนุมัติแล้ว</span>
+            {% elif post.status == 'pending_approval' %}
+            <span style="background:#fef9c3;color:#854d0e;font-size:12px;padding:3px 10px;border-radius:20px;font-weight:600;">⏳ รออนุมัติ</span>
+            {% else %}
+            <span style="background:#f3f4f6;color:#6b7280;font-size:12px;padding:3px 10px;border-radius:20px;">{{ post.status }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin-top:16px;font-size:13px;color:#6b7280;">
+    รวม {{ posts | length }} โพสต์ที่รออยู่ในคิว
+  </div>
+  {% endif %}
+</div>
+
+<div class="card" style="background:#f0fdf4;border:1px solid #86efac;">
+  <h2 style="color:#15803d;margin-bottom:8px;">📊 แนวทางการโพสต์</h2>
+  <ul style="font-size:14px;color:#166534;line-height:1.8;padding-left:20px;">
+    <li>โพสต์ทุก <strong>1-2 วัน</strong> — ระบบจะแนะนำวันเวลาให้อัตโนมัติ</li>
+    <li>ใช้ AI สร้าง caption จาก brief สั้นๆ ใน <a href="/post" style="color:#15803d;">หน้าโพสต์ใหม่</a></li>
+    <li>Admin ต้องอนุมัติก่อนโพสต์จริง — ระบบส่ง email + Line Notify</li>
+    <li>โพสต์ Facebook และ Instagram พร้อมกันได้ในครั้งเดียว</li>
+  </ul>
+</div>
+{% endblock %}

@@ -5,12 +5,12 @@ from contextlib import asynccontextmanager
 
 import aiofiles
 from fastapi import FastAPI, Form, Request, UploadFile, File
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from approval.router import router as approval_router
-from database.db import init_db
+from database.db import init_db, get_upcoming_posts, get_next_suggested_slot
 from handlers.line_handler import router as line_router
 from handlers.meta_handler import router as meta_router
 from handlers.skills_handler import router as skills_router
@@ -18,6 +18,8 @@ from scheduler.post_scheduler import start_scheduler, stop_scheduler
 from approval.store import create_post_approval
 from notifications.email_notify import send_post_approval_email
 from notifications.line_notify import notify_post_approval
+from ai.engine import generate_reply
+from skills import build_marketing_prompt
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -53,7 +55,8 @@ async def home(request: Request):
 
 @app.get("/post", response_class=HTMLResponse)
 async def post_form(request: Request):
-    return templates.TemplateResponse("post_form.html", {"request": request})
+    next_slot = await get_next_suggested_slot()
+    return templates.TemplateResponse("post_form.html", {"request": request, "next_slot": next_slot})
 
 
 @app.post("/post", response_class=HTMLResponse)
@@ -102,14 +105,34 @@ async def submit_post(
     except Exception:
         logger.exception("Line Notify failed")
 
+    next_slot = await get_next_suggested_slot()
     return templates.TemplateResponse(
         "post_form.html",
         {
             "request": request,
             "success": True,
             "approval_id": approval_id,
+            "next_slot": next_slot,
         },
     )
+
+
+@app.post("/post/generate-caption")
+async def generate_caption(brief: str = Form(...), platform_hint: str = Form("")):
+    """AI-powered caption generator using Marketing Manager skill."""
+    task = f"""Generate a social media caption for: {brief}
+Platform: {platform_hint or 'Instagram/Facebook'}
+Requirements: match Pana Studio's post style — engaging, clean, minimal emojis, Thai or English based on brief language.
+Return ONLY the caption text + hashtags. No explanations."""
+    system = build_marketing_prompt()
+    caption = await generate_reply(task, [], system_prompt=system, max_tokens=400)
+    return JSONResponse({"caption": caption})
+
+
+@app.get("/calendar", response_class=HTMLResponse)
+async def calendar_view(request: Request):
+    posts = await get_upcoming_posts()
+    return templates.TemplateResponse("calendar.html", {"request": request, "posts": posts})
 
 
 @app.get("/health")
