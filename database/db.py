@@ -282,7 +282,7 @@ async def _seed_leads():
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT COUNT(*) FROM leads") as cur:
             count = (await cur.fetchone())[0]
-    if count > 0:
+    if count >= 76:
         return
     seed = [
         ("2024-09-21","Ploy","No Brand","Line OA","November 2","Whey Protein / 2 models","","paid"),
@@ -331,6 +331,37 @@ async def _seed_leads():
         ("2024-10-18","กานต์","Wanderlust Stylish","Instagram","30/10","Sent Email","karnkanyapak.work@gmail.com","follow_up"),
         ("2024-10-18","Fon","Jin.BKK","Instagram","29/10","","","paid"),
         ("2024-10-19","Auri","Maison de Auri","Instagram","29/10","","","paid"),
+        # Brand outreach targets (from Brand Data spreadsheet)
+        ("","","Varenna Studio","Instagram","","Bag | @varenna.studio","","new"),
+        ("","","FFfinder","Instagram","","@fffinderco","","new"),
+        ("","","Kasina","Instagram","","@kasina.official___ | Dene","","new"),
+        ("","","Rock Chang Tshirt Brand","Instagram","","@rockchangth","","new"),
+        ("","","LABELIZED","Instagram","","@shoplabelized","","new"),
+        ("","","Oh Honey Honey","Instagram","","Swimwear | @ohhoneyhoney.official","","new"),
+        ("","","KADE.BKK","Instagram","","@kade.bkk","","new"),
+        ("","","SANDAA EST2016","Instagram","","Swimwear | @sandaa_official","","new"),
+        ("","","Hit-chip Shoes","Instagram","","@hit.chip","","new"),
+        ("","","Alice Gems","Instagram","","Accessories | @alicegems_official","","new"),
+        ("","","Overnaked","Instagram","","Body Oil | @overnaked.official","","new"),
+        ("","","MIRAH","Instagram","","@mirahofficial_th","","new"),
+        ("","","Feline Agency","Instagram","","@felineagency","","new"),
+        ("","","Whiteline Official","Instagram","","Dene | @whiteline_dress","","new"),
+        ("","","SUAVE LUXE","Instagram","","Night Dress | @suave.luxe","","new"),
+        ("","","felt.bkk","Instagram","","@felt.bkk","","new"),
+        ("","","Plant B","Instagram","","Whey Protein | @plantbhealth","","new"),
+        ("","","bubuBee-story","Instagram","","Dene | @bububeestory","","new"),
+        ("","","VINTAGE FLAMINGO","Instagram","","Swimwear | @vintage_flamingo","","new"),
+        ("","","Daisy by Daisy","Instagram","","@daisybydaisy.brand","","new"),
+        ("","","ROMP","Instagram","","@romp.co","","new"),
+        ("","","Fullada","Instagram","","Swimwear | @fullanda_swimwear","","new"),
+        ("","","PASTELS MOTEL","Instagram","","@pastelsmotel","","new"),
+        ("","","VATANA","Instagram","","Street Shoot | @vatana_official","","new"),
+        ("","","Sierabysera","Instagram","","@sierabysera","","new"),
+        ("","","THREEP","Instagram","","@threep.co","","new"),
+        ("","","Trikul","Instagram","","@trikul.official","","new"),
+        ("","","WEEKEND WARDROBE","Instagram","","@weekendwardrobe.rb","","new"),
+        ("","","Embroiderer","Instagram","","Bag | @embroidererbangkok","","new"),
+        ("","","KLOVES","Instagram","","Jewelry | @kloves_jewelry","","new"),
     ]
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executemany(
