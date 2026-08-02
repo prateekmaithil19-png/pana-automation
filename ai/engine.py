@@ -1,3 +1,5 @@
+import re
+
 from google import genai
 from google.genai import types
 import config
@@ -5,6 +7,19 @@ from ai.prompts import build_system_prompt
 
 _client = genai.Client(api_key=config.GEMINI_API_KEY)
 _MODEL = "gemini-flash-latest"
+
+_THINKING_RE = re.compile(
+    r"(\*\*Drafting Options.*?\*\*|"
+    r"\*\*Internal Monologue.*?\*\*|"
+    r"Draft \d+:.*?(?=Draft \d+:|$)|"
+    r"\(Internal Monologue.*?\))",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _clean_reply(text: str) -> str:
+    cleaned = _THINKING_RE.sub("", text)
+    return cleaned.strip()
 
 
 async def generate_reply(
@@ -28,7 +43,6 @@ async def generate_reply(
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
             max_output_tokens=max_tokens,
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
         ),
     )
-    return response.text.strip()
+    return _clean_reply(response.text)
