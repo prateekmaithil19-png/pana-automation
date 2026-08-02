@@ -28,6 +28,7 @@ async def generate_reply(
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
             max_output_tokens=max_tokens,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         ),
     )
     return response.text.strip()
