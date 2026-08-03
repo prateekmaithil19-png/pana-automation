@@ -1,6 +1,15 @@
 import re
 from database.db import get_conversation, get_customer_state, upsert_customer_state
 
+# Name extraction — Thai: "ชื่อ X" / "เรียก X" | English: "I'm X", "my name is X", "call me X"
+_NAME_PATTERNS = [
+    re.compile(r"ชื่อ\s*([ก-๙a-zA-Z]{2,20})", re.IGNORECASE),
+    re.compile(r"เรียก\s*([ก-๙a-zA-Z]{2,20})\s*(?:ได้|นะ|ว่า|เลย)", re.IGNORECASE),
+    re.compile(r"(?:I'm|I am|my name is|this is|call me|name(?:'s| is))\s+([A-Z][a-z]{1,19})", re.IGNORECASE),
+]
+# Thai sentence-ending particles that may get attached to a captured name
+_THAI_PARTICLES = re.compile(r"(?:นะคะ|นะครับ|ค่ะ|คะ|ครับ|นะ|ค่)$")
+
 _SHOOT_TYPE_MULTIBRAND = re.compile(
     r"one stop|multibrand|multi.?brand|แชร์แบรนด์|one-stop|sharing|"
     r"หลายแบรนด์|ร่วมกัน|ราคาถูก|ประหยัด",
@@ -42,6 +51,18 @@ _STAGE_GUIDANCE = {
 def _extract_facts(messages: list[str]) -> dict:
     combined = " ".join(messages[-10:])
     facts = {}
+
+    # Name — scan all messages individually to catch introductions
+    for msg in messages[-10:]:
+        for pattern in _NAME_PATTERNS:
+            m = pattern.search(msg)
+            if m:
+                name = _THAI_PARTICLES.sub("", m.group(1)).strip()
+                if len(name) >= 2:
+                    facts["customer_name"] = name
+                    break
+        if "customer_name" in facts:
+            break
 
     if _SHOOT_TYPE_MULTIBRAND.search(combined):
         facts["shoot_type"] = "One Stop Service (multibrand/shared)"
@@ -99,7 +120,7 @@ async def update_customer_state(
     stage = force_stage if force_stage else _determine_stage(persisted_stage, facts, len(customer_messages))
 
     update_fields: dict = {"stage": stage, "follow_up_count": 0}
-    for key in ("shoot_type", "num_looks", "product_type", "preferred_date"):
+    for key in ("shoot_type", "num_looks", "product_type", "preferred_date", "customer_name"):
         if facts.get(key):
             update_fields[key] = facts[key]
 
@@ -117,7 +138,7 @@ async def build_customer_context(platform: str, user_id: str) -> str:
     # Merge: DB state is the source of truth; fresh extraction adds anything new
     merged: dict = {}
     if state:
-        for k in ("shoot_type", "num_looks", "product_type", "preferred_date"):
+        for k in ("shoot_type", "num_looks", "product_type", "preferred_date", "customer_name"):
             if state.get(k):
                 merged[k] = state[k]
     for k, v in fresh_facts.items():
@@ -130,6 +151,13 @@ async def build_customer_context(platform: str, user_id: str) -> str:
         return ""
 
     lines = []
+
+    # Name instruction — at the very top so agent sees it first
+    customer_name = merged.pop("customer_name", None)
+    if customer_name:
+        lines.append(f"## Customer Name: {customer_name}")
+        lines.append(f"Address this customer as {customer_name} occasionally (not every message — once or twice naturally).")
+        lines.append("")
 
     # Stage header — tells the agent exactly where it is in the funnel
     lines.append(f"## Conversation Stage: {stage.upper()}")

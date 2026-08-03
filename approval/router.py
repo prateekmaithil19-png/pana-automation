@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 import config
-from database.db import get_approval, update_approval, update_post_status
+from database.db import get_approval, save_correction_example, update_approval, update_post_status
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -98,6 +98,18 @@ async def submit_edit(approval_id: str, edited_reply: str = Form(...)):
         return HTMLResponse(f"<p>Already {approval['status']}.</p>")
 
     await update_approval(approval_id, "edited", edited_reply)
+
+    # Save as a correction example so the AI learns from Deen's edits
+    if approval["approval_type"] == "reply" and approval.get("customer_message") and approval.get("ai_reply"):
+        try:
+            await save_correction_example(
+                approval["customer_message"],
+                approval["ai_reply"],
+                edited_reply,
+            )
+        except Exception:
+            pass  # Non-critical — don't break delivery if save fails
+
     if approval["approval_type"] == "reply":
         await _deliver_reply(approval, edited_reply)
     return HTMLResponse("<h2>✅ ส่งข้อความแล้ว</h2><p>ข้อความที่แก้ไขถูกส่งให้ลูกค้าเรียบร้อยค่ะ</p>")

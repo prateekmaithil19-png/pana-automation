@@ -9,10 +9,10 @@ from fastapi.responses import JSONResponse
 
 import config
 from ai.classifier import is_pricing_request, is_escalation_needed, is_confidentiality_probe
-from ai.engine import generate_reply
+from ai.engine import generate_reply, generate_reply_with_image
 from ai.prompts import build_system_prompt
 from approval.store import create_reply_approval
-from database.db import add_message, get_conversation
+from database.db import add_message, get_conversation, get_recent_corrections
 from memory.customer_context import build_customer_context, update_customer_state
 from notifications.email_notify import send_reply_approval_email
 from notifications.line_notify import notify_reply_approval
@@ -41,12 +41,53 @@ async def _line_reply(reply_token: str, text: str):
         )
 
 
+async def _build_prompt(user_id: str) -> str:
+    customer_memory = await build_customer_context("line", user_id)
+    corrections = await get_recent_corrections()
+    return build_system_prompt(customer_memory=customer_memory, corrections=corrections)
+
+
+async def _download_line_image(message_id: str) -> bytes:
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"https://api-data.line.me/v2/bot/message/{message_id}/content",
+            headers={"Authorization": f"Bearer {config.LINE_CHANNEL_ACCESS_TOKEN}"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.content
+
+
+async def _handle_line_image(user_id: str, message_id: str, reply_token: str):
+    history = await get_conversation("line", user_id)
+    system_prompt = await _build_prompt(user_id)
+
+    try:
+        image_bytes = await _download_line_image(message_id)
+    except Exception:
+        logger.exception("Failed to download Line image for user %s", user_id)
+        ack = "ขอบคุณที่ส่งรูปมานะคะ 🙏 ขอดูรายละเอียดกับทีมงานก่อนแล้วจะตอบกลับนะคะ"
+        await _line_reply(reply_token, ack)
+        return
+
+    await add_message("line", user_id, "customer", "[ลูกค้าส่งรูปภาพสินค้า]")
+
+    ai_reply = await generate_reply_with_image(
+        image_bytes,
+        "[Customer sent a product/reference photo. Describe what you see, connect it to Pana Studio services, and ask one follow-up question.]",
+        history,
+        system_prompt=system_prompt,
+    )
+
+    await add_message("line", user_id, "assistant", ai_reply)
+    await _line_reply(reply_token, ai_reply)
+    await update_customer_state("line", user_id, history)
+
+
 async def _handle_line_message(user_id: str, text: str, reply_token: str):
     history = await get_conversation("line", user_id)
     await add_message("line", user_id, "customer", text)
-
-    customer_memory = await build_customer_context("line", user_id)
-    system_prompt = build_system_prompt(customer_memory=customer_memory)
+    system_prompt = await _build_prompt(user_id)
 
     # Confidentiality probe — log silently so Deen can review; agent handles it via prompt
     if is_confidentiality_probe(text):
@@ -118,19 +159,22 @@ async def line_webhook(request: Request):
         if event.get("type") != "message":
             continue
         msg = event.get("message", {})
-        if msg.get("type") != "text":
-            continue
-
         user_id = event.get("source", {}).get("userId")
-        text = msg.get("text", "").strip()
         reply_token = event.get("replyToken", "")
 
-        if not user_id or not text:
+        if not user_id:
             continue
 
         try:
-            await _handle_line_message(user_id, text, reply_token)
+            if msg.get("type") == "text":
+                text = msg.get("text", "").strip()
+                if text:
+                    await _handle_line_message(user_id, text, reply_token)
+            elif msg.get("type") == "image":
+                message_id = msg.get("id")
+                if message_id:
+                    await _handle_line_image(user_id, message_id, reply_token)
         except Exception:
-            logger.exception("Error handling Line message from %s", user_id)
+            logger.exception("Error handling Line event from %s", user_id)
 
     return JSONResponse({"status": "ok"})

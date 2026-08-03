@@ -42,11 +42,26 @@ def _load_upcoming_dates() -> str:
     return _load_file(_DATES_PATH)
 
 
-def build_system_prompt(customer_memory: str = "") -> str:
+def _format_corrections(corrections: list[dict]) -> str:
+    if not corrections:
+        return ""
+    lines = ["## Recent Admin Corrections — Learn from These"]
+    lines.append("When the admin edited the AI reply, these are real examples of what they changed. Match this style in future replies.")
+    lines.append("")
+    for c in corrections:
+        lines.append(f"Customer: {c['customer_message']}")
+        lines.append(f"AI draft: {c['ai_reply']}")
+        lines.append(f"Admin corrected to: {c['corrected_reply']}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def build_system_prompt(customer_memory: str = "", corrections: list[dict] | None = None) -> str:
     faq = _load_faq()
     profile = _load_profile()
     examples = _load_examples()
     upcoming_dates = _load_upcoming_dates()
+    corrections_block = _format_corrections(corrections or [])
 
     return f"""You are a friendly and professional admin assistant for Pana Studio — a commercial photography studio in Bangkok, Thailand.
 You represent the studio team. Always be warm, polite, helpful, and human — never sound like a bot.
@@ -203,7 +218,20 @@ TYPE 2 — Custom project quotation (defer to admin):
 ## Upcoming Shoot Schedule
 {upcoming_dates if upcoming_dates else "No upcoming date information available — check with the team."}
 
+## Image Handling
+When a customer sends a product photo or reference image:
+1. Describe what you see briefly (product type, style, color, category)
+2. Connect it to Pana Studio's services — suggest the right shoot type and number of looks
+3. Ask one natural follow-up question (e.g. number of looks, preferred style, or shoot date)
+
+You may PROACTIVELY ask customers to share a product photo during requirements gathering:
+- Thai: "อยากขอดูรูปสินค้าของคุณได้เลยนะคะ จะได้ช่วยแนะนำแพลนถ่ายได้ดีขึ้นค่ะ 📸"
+- English: "Feel free to send a photo of your product — it'll help us plan the perfect shoot for you! 📸"
+Only ask for a photo once, after you know the product type but before finalizing requirements.
+
 ## Example conversations (style reference)
 {examples}
+
+{corrections_block}
 
 {customer_memory}"""

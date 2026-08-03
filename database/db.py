@@ -62,14 +62,34 @@ async def init_db():
                 num_looks TEXT,
                 product_type TEXT,
                 preferred_date TEXT,
+                customer_name TEXT,
                 follow_up_count INTEGER DEFAULT 0,
                 last_message_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 last_follow_up_at DATETIME,
                 PRIMARY KEY (platform, user_id)
             );
+
+            CREATE TABLE IF NOT EXISTS correction_examples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_message TEXT NOT NULL,
+                ai_reply TEXT NOT NULL,
+                corrected_reply TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
         """)
         await db.commit()
+    await _migrate_existing_tables()
     await _seed_leads()
+
+
+async def _migrate_existing_tables():
+    """Add new columns to existing tables without data loss."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("PRAGMA table_info(customer_state)") as cur:
+            existing_cols = {row[1] async for row in cur}
+        if "customer_name" not in existing_cols:
+            await db.execute("ALTER TABLE customer_state ADD COLUMN customer_name TEXT")
+            await db.commit()
 
 
 async def add_message(platform: str, user_id: str, role: str, message: str):
@@ -105,7 +125,7 @@ async def get_customer_state(platform: str, user_id: str) -> dict | None:
     return dict(row) if row else None
 
 
-_ALLOWED_STATE_COLS = {"stage", "shoot_type", "num_looks", "product_type", "preferred_date", "follow_up_count"}
+_ALLOWED_STATE_COLS = {"stage", "shoot_type", "num_looks", "product_type", "preferred_date", "customer_name", "follow_up_count"}
 
 
 async def upsert_customer_state(platform: str, user_id: str, **fields):
@@ -136,6 +156,28 @@ async def mark_followup_sent(platform: str, user_id: str, new_count: int, new_st
             (new_count, new_stage, platform, user_id),
         )
         await db.commit()
+
+
+async def save_correction_example(customer_message: str, ai_reply: str, corrected_reply: str):
+    """Save a case where Deen edited the AI reply — used to improve future responses."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO correction_examples (customer_message, ai_reply, corrected_reply) VALUES (?,?,?)",
+            (customer_message, ai_reply, corrected_reply),
+        )
+        await db.commit()
+
+
+async def get_recent_corrections(limit: int = 5) -> list[dict]:
+    """Return the most recent corrections for inclusion in the system prompt."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT customer_message, ai_reply, corrected_reply FROM correction_examples ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [dict(r) for r in rows]
 
 
 async def get_customers_needing_followup() -> list[dict]:
