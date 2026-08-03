@@ -158,6 +158,26 @@ async def mark_followup_sent(platform: str, user_id: str, new_count: int, new_st
         await db.commit()
 
 
+async def get_customer_state_all(platform: str = "line", stages: list[str] | None = None) -> list[dict]:
+    """Return all customer states for a platform, optionally filtered by stage list."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if stages:
+            placeholders = ",".join("?" * len(stages))
+            async with db.execute(
+                f"SELECT * FROM customer_state WHERE platform=? AND stage IN ({placeholders}) ORDER BY last_message_at DESC",
+                [platform] + stages,
+            ) as cur:
+                rows = await cur.fetchall()
+        else:
+            async with db.execute(
+                "SELECT * FROM customer_state WHERE platform=? ORDER BY last_message_at DESC",
+                (platform,),
+            ) as cur:
+                rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
 async def save_correction_example(customer_message: str, ai_reply: str, corrected_reply: str):
     """Save a case where Deen edited the AI reply — used to improve future responses."""
     async with aiosqlite.connect(DB_PATH) as db:

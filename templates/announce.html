@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Shoot Announcement — Pana Studio{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h1>📣 Shoot Announcement</html>
+  <p style="color:#666;font-size:14px;margin-bottom:20px;">
+    Send an upcoming shoot notification to Line customers. AI generates the Thai message — you review and confirm before sending.
+  </p>
+
+  {% if sent %}
+    {% if error_msg %}
+      <div style="background:#fef2f2;border:1px solid #fca5a5;padding:16px;border-radius:8px;color:#991b1b;margin-bottom:20px;">
+        <strong>Send failed:</strong> {{ error_msg }}
+      </div>
+    {% else %}
+      <div class="alert-success" style="font-size:16px;padding:20px;">
+        ✅ <strong>Sent successfully!</strong><br>
+        {% if sent_count == -1 %}
+          Broadcast sent to all Line OA followers.
+        {% else %}
+          Pushed to {{ sent_count }} Line lead(s).
+        {% endif %}
+      </div>
+    {% endif %}
+    <a href="/announce" class="btn btn-blue">Send Another Announcement</a>
+
+  {% elif preview_message %}
+    <div style="margin-bottom:20px;">
+      <h2>Preview</h2>
+      <div class="message-box ai">{{ preview_message }}</div>
+      {% if image_url %}
+        <p style="font-size:13px;color:#666;margin-top:-10px;margin-bottom:16px;">📎 Image: {{ image_url }}</p>
+      {% endif %}
+    </div>
+
+    <form method="post" action="/announce/send">
+      <input type="hidden" name="shoot_date" value="{{ shoot_date }}">
+      <input type="hidden" name="price" value="{{ price }}">
+      <input type="hidden" name="extra_note" value="{{ extra_note }}">
+      <input type="hidden" name="image_url" value="{{ image_url }}">
+      <input type="hidden" name="target" value="{{ target }}">
+
+      <label>Edit message before sending (optional)</label>
+      <textarea name="final_message" rows="8">{{ preview_message }}</textarea>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button type="submit" class="btn btn-green">
+          {% if target == "broadcast" %}📡 Broadcast to All Line Followers{% else %}📲 Push to Warm Leads{% endif %}
+        </button>
+        <a href="/announce" class="btn btn-gray">Back</a>
+      </div>
+    </form>
+
+  {% else %}
+    <form method="post" action="/announce/preview">
+      <label>Shoot Date *</label>
+      <input type="text" name="shoot_date" placeholder="e.g. วันเสาร์ที่ 10 สิงหาคม 2026" required>
+
+      <label>Price per Look (THB)</label>
+      <input type="text" name="price" value="2190" placeholder="2190">
+
+      <label>Extra Details (optional)</label>
+      <textarea name="extra_note" rows="3" placeholder="e.g. รับเพียง 5 แบรนด์ / จัดไฟ Studio style / มีโมเดลสาวไทย 3 คน"></textarea>
+
+      <label>Image URL (optional — attach a studio photo to the message)</label>
+      <input type="url" name="image_url" placeholder="https://... (must be a public HTTPS image URL)">
+
+      <label>Send To</label>
+      <select name="target" style="margin-bottom:20px;">
+        <option value="broadcast">📡 All Line OA Followers (Broadcast)</option>
+        <option value="leads">📲 Warm Leads Only (customers who previously showed interest)</option>
+      </select>
+
+      <button type="submit" class="btn btn-blue">✨ Generate Announcement</button>
+    </form>
+  {% endif %}
+</div>
+
+{% endblock %}
