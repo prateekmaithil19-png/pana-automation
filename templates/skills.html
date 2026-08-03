@@ -15,6 +15,8 @@
        onclick="showTab('marketing');return false;">📣 Marketing</a>
     <a href="#competitor" class="btn {% if active_skill == 'competitor' %}btn-blue{% else %}btn-gray{% endif %}"
        onclick="showTab('competitor');return false;">🔍 Competitor</a>
+    <a href="#expense" class="btn {% if active_skill == 'expense' %}btn-blue{% else %}btn-gray{% endif %}"
+       onclick="showTab('expense');return false;">💰 Expenses</a>
   </div>
 
   <!-- Lead Manager -->
@@ -67,6 +69,34 @@
       <label>ข้อมูลคู่แข่ง</label>
       <textarea name="competitor_info" placeholder="เช่น: สตูดิโอ XYZ Instagram @xyz_studio โพสต์ทุกวัน ราคา brand photoshoot 5,000 บาท/session เน้น flat lay ลูกค้าส่วนใหญ่เป็น food brand" required>{% if active_skill == 'competitor' %}{{ input_value }}{% endif %}</textarea>
       <button type="submit" class="btn btn-blue">🔍 วิเคราะห์</button>
+    </form>
+  </div>
+
+  <!-- Expense Manager -->
+  <div id="tab-expense" class="tab-panel" {% if active_skill != 'expense' %}style="display:none"{% endif %}>
+    <h2>💰 Expense Manager — วิเคราะห์ค่าใช้จ่าย</h2>
+    <p style="color:#666;font-size:13px;margin-bottom:16px;">
+      อัปโหลดไฟล์ Excel จากตัวติดตามค่าใช้จ่ายของ Pana Studio หรือวางข้อมูลเองก็ได้<br>
+      AI จะแยกหมวดหมู่ วิเคราะห์กำไร/ขาดทุน และให้คำแนะนำที่ใช้งานได้จริง<br>
+      <span style="color:#e55;">⚠️ ข้อมูลไม่ถูกบันทึกในระบบ — วิเคราะห์เฉพาะครั้งนี้เท่านั้น</span>
+    </p>
+    {% if parse_error %}
+    <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:10px;margin-bottom:12px;font-size:13px;">
+      ⚠️ {{ parse_error }}
+    </div>
+    {% endif %}
+    <form method="post" action="/skills/expense" enctype="multipart/form-data">
+      <label style="font-weight:600;">อัปโหลดไฟล์ Excel (.xlsx)</label>
+      <input type="file" name="expense_file" accept=".xlsx,.xls"
+             style="display:block;margin:8px 0 16px;font-size:13px;" />
+      <label style="font-weight:600;color:#888;">— หรือวางข้อมูลเองด้านล่าง —</label>
+      <textarea name="expense_data" rows="6"
+        style="margin-top:8px;"
+        placeholder="วางข้อมูลค่าใช้จ่ายที่นี่ (ถ้าไม่อัปโหลดไฟล์)">{% if active_skill == 'expense' %}{{ input_value }}{% endif %}</textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px;">
+        <button type="submit" class="btn btn-blue">💰 วิเคราะห์ค่าใช้จ่าย</button>
+        <span style="font-size:12px;color:#999;">รองรับ Expense Tracker ทั้ง 2 รูปแบบ (2023-2024 และ 2025)</span>
+      </div>
     </form>
   </div>
 </div>

@@ -1,6 +1,5 @@
 import re
 
-# Only trigger admin approval for custom project quotes — NOT for standard FAQ prices
 _QUOTE_KEYWORDS = [
     # Thai — explicit custom quotation requests
     "ใบเสนอราคา", "เสนอราคา", "คิดราคา", "ราคางาน", "ค่าถ่ายทั้งหมด",
@@ -26,14 +25,104 @@ _QUOTE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Signals in conversation history that indicate a custom project (not standard FAQ)
+_CUSTOM_PROJECT_SIGNALS = re.compile(
+    r"moodboard|reference|concept|theme|individual brand|แบรนด์เดี่ยว|เฉพาะแบรนด์|"
+    r"outdoor|beach|location|full.?day|half.?day|งบประมาณ|งบ|custom|bespoke",
+    re.IGNORECASE,
+)
 
-def is_pricing_request(message: str) -> bool:
-    # First exclude questions about duration/count that aren't pricing
+# Vague price question that only becomes a quote request with custom project context
+_VAGUE_PRICE_RE = re.compile(
+    r"ราคา|เท่าไหร่|cost|price|how much|budget|งบ",
+    re.IGNORECASE,
+)
+
+# Escalation signals — frustrated customer or no response
+_ESCALATION_PATTERNS = re.compile(
+    r"ทำไมไม่ตอบ|ตอบช้า|รอนานมาก|ไม่มีคนตอบ|ติดต่อไม่ได้|"
+    r"no one is reply|nobody reply|why no response|not responding|still waiting|"
+    r"เสียเวลา|ไม่พอใจ|แย่มาก|บริการแย่|"
+    r"urgent|urgently|asap|ด่วน|ด่วนมาก",
+    re.IGNORECASE,
+)
+
+
+def is_pricing_request(message: str, conversation_history: list[dict] | None = None) -> bool:
     if _NOT_PRICE_PATTERNS.search(message):
         return False
-    return bool(_QUOTE_RE.search(message))
+    if _QUOTE_RE.search(message):
+        return True
+    # Vague price question + custom project context in history = treat as quote request
+    if conversation_history and _VAGUE_PRICE_RE.search(message):
+        recent_customer_text = " ".join(
+            t.get("content", "")
+            for t in conversation_history[-6:]
+            if t.get("role") in ("customer", "user")
+        )
+        if _CUSTOM_PROJECT_SIGNALS.search(recent_customer_text):
+            return True
+    return False
+
+
+def is_escalation_needed(message: str, conversation_history: list[dict] | None = None) -> bool:
+    if _ESCALATION_PATTERNS.search(message):
+        return True
+    # 3+ consecutive unanswered customer messages = needs attention
+    if conversation_history and len(conversation_history) >= 3:
+        last_roles = [t.get("role") for t in conversation_history[-4:]]
+        streak = 0
+        for role in reversed(last_roles):
+            if role in ("customer", "user"):
+                streak += 1
+            else:
+                break
+        if streak >= 3:
+            return True
+    return False
+
+
+_CONFIDENTIALITY_PROBE_PATTERNS = re.compile(
+    # Internal cost probing (English)
+    r"pay (the )?model|pay (the )?photographer|pay (the )?studio|"
+    r"how much (do you|does it) cost you|your cost|your expense|your margin|profit margin|"
+    r"profit (per|on|from)|markup|cost per look|internal (cost|price|rate)|"
+    r"how much (do you|you) make|your revenue|your income|annual (revenue|income)|"
+    r"monthly (revenue|income|profit)|"
+    # Financial health probing (English)
+    r"profitable|making (money|profit|loss)|losing money|financial(ly)?|"
+    r"how much (is the|does the) business|business (performance|health)|"
+    # Other clients probing (English)
+    r"who else (is|are) (shooting|booking|coming)|other (brand|client|customer)s?|"
+    r"how many (brand|client|customer)s? (per|a|each) (day|month|session|shoot)|"
+    r"who (else )?shoot(s|ing)? (with|together|same day)|"
+    # Tech/system probing (English)
+    r"are you (an? )?(ai|bot|robot|automated|chatbot|gpt|chatgpt|claude|gemini)|"
+    r"(using|use) (ai|chatgpt|gpt|claude|gemini|openai)|"
+    r"is this (automated|a bot|ai)|"
+    r"who (is |are )?(really |actually )?respond(ing)?|"
+    r"(real|human|actual) (person|human|staff|admin)|"
+    # Vendor probing (English)
+    r"which studio (do you|you) (rent|use)|studio (rate|cost|price) for you|"
+    r"photographer (name|who|rate|fee)|who (is|are) (your|the) photographer|"
+    # Thai language probing
+    r"จ่าย(ค่า)?(นางแบบ|ช่างภาพ|สตูดิโอ)|"
+    r"ต้นทุน|กำไร(เท่าไหร่|ต่อ|กี่)|ขาดทุน|รายได้|รายรับ|"
+    r"แบรนด์อื่น|ลูกค้าคนอื่น|ใครถ่ายด้วย|มีกี่แบรนด์|"
+    r"เป็น\s*(AI|บอท|ระบบอัตโนมัติ|โปรแกรม)|ใช้\s*AI|"
+    r"คุยกับ(คน|มนุษย์)จริงๆ|มีคนจริงๆ|ระบบอัตโนมัติ",
+    re.IGNORECASE,
+)
+
+
+def is_confidentiality_probe(message: str) -> bool:
+    """Detects if a customer message is probing for internal/confidential business info."""
+    return bool(_CONFIDENTIALITY_PROBE_PATTERNS.search(message))
 
 
 def detect_language(message: str) -> str:
+    if not message:
+        return "en"
     thai_chars = sum(1 for c in message if "฀" <= c <= "๿")
-    return "th" if thai_chars > 0 else "en"
+    ratio = thai_chars / len(message)
+    return "th" if ratio > 0.15 else "en"

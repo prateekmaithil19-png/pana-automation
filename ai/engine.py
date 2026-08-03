@@ -191,7 +191,7 @@ async def generate_reply(
     customer_message: str,
     conversation_history: list[dict],
     system_prompt: str | None = None,
-    max_tokens: int = 512,
+    max_tokens: int = 800,
 ) -> str:
     if system_prompt is None:
         system_prompt = build_system_prompt()

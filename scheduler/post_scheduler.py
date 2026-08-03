@@ -139,8 +139,23 @@ async def publish_approved_posts():
 
 def start_scheduler():
     scheduler.add_job(publish_approved_posts, "interval", minutes=1, id="publish_posts")
+    # Refresh upcoming shoot dates daily at 08:00 Bangkok time (UTC+7 = 01:00 UTC)
+    scheduler.add_job(
+        _refresh_dates,
+        "cron",
+        hour=1,
+        minute=0,
+        id="refresh_shoot_dates",
+        timezone="UTC",
+    )
     scheduler.start()
-    logger.info("Scheduler started — checking for posts every minute")
+    logger.info("Scheduler started — posts every minute, dates refreshed daily at 08:00 BKK")
+
+
+def _refresh_dates():
+    import asyncio
+    from scheduler.date_fetcher import refresh_upcoming_dates
+    asyncio.create_task(refresh_upcoming_dates())
 
 
 def stop_scheduler():

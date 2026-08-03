@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 import config
-from ai.classifier import is_pricing_request
+from ai.classifier import is_pricing_request, is_escalation_needed, is_confidentiality_probe
 from ai.engine import generate_reply
 from ai.prompts import build_system_prompt
 from approval.store import create_reply_approval
@@ -48,7 +48,36 @@ async def _handle_line_message(user_id: str, text: str, reply_token: str):
     customer_memory = await build_customer_context("line", user_id)
     system_prompt = build_system_prompt(customer_memory=customer_memory)
 
-    if is_pricing_request(text):
+    # Confidentiality probe — log silently so Deen can review; agent handles it via prompt
+    if is_confidentiality_probe(text):
+        logger.warning(
+            "[CONFIDENTIALITY PROBE] user=%s message=%r — agent will deflect via prompt",
+            user_id, text,
+        )
+
+    # Escalation check — alert admin if customer is frustrated or unanswered too long
+    if is_escalation_needed(text, history):
+        logger.warning("Escalation needed for user %s — message: %s", user_id, text)
+        try:
+            await send_reply_approval_email(
+                "ESCALATION",
+                "line",
+                text,
+                f"[ESCALATION ALERT] Customer {user_id} needs urgent attention.\nMessage: {text}",
+            )
+        except Exception:
+            logger.exception("Escalation email failed")
+        try:
+            await notify_reply_approval(
+                "ESCALATION",
+                "line",
+                text,
+                f"[ด่วน] ลูกค้า {user_id} ต้องการความช่วยเหลือด่วน",
+            )
+        except Exception:
+            logger.exception("Escalation Line Notify failed")
+
+    if is_pricing_request(text, conversation_history=history):
         ai_reply = await generate_reply(text, history, system_prompt=system_prompt)
         approval_id = await create_reply_approval("line", user_id, text, ai_reply)
 

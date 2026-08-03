@@ -16,6 +16,7 @@ from handlers.line_handler import router as line_router
 from handlers.meta_handler import router as meta_router
 from handlers.skills_handler import router as skills_router
 from scheduler.post_scheduler import start_scheduler, stop_scheduler
+from scheduler.date_fetcher import refresh_upcoming_dates
 from approval.store import create_post_approval
 from notifications.email_notify import send_post_approval_email
 from notifications.line_notify import notify_post_approval
@@ -33,6 +34,10 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 async def lifespan(app: FastAPI):
     await init_db()
     start_scheduler()
+    try:
+        await refresh_upcoming_dates()
+    except Exception:
+        logger.warning("Startup date refresh failed — will retry at 08:00 BKK daily")
     yield
     stop_scheduler()
 

@@ -6,7 +6,7 @@
 - **Instagram:** @pa.na.studio — https://www.instagram.com/pa.na.studio/
 - **Line OA:** @147xhyzb
 - **Linktree:** linktr.ee/pa.na.studio
-- **Owner/Admin:** Deen (Prateek)
+- **Owner/Admin:** Deen
 - **Contact:** 065-974-5556
 
 ## Brand Tagline
