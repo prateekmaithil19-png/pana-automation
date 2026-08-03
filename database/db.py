@@ -9,21 +9,21 @@ async def init_db():
         await db.executescript("""
             CREATE TABLE IF NOT EXISTS conversations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                platform TEXT NOT NULL,          -- 'facebook', 'instagram', 'line'
+                platform TEXT NOT NULL,
                 user_id TEXT NOT NULL,
-                role TEXT NOT NULL,              -- 'customer' | 'assistant'
+                role TEXT NOT NULL,
                 message TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
             CREATE TABLE IF NOT EXISTS pending_approvals (
-                id TEXT PRIMARY KEY,             -- secure token
-                approval_type TEXT NOT NULL,     -- 'reply' | 'post'
+                id TEXT PRIMARY KEY,
+                approval_type TEXT NOT NULL,
                 platform TEXT,
                 user_id TEXT,
                 customer_message TEXT,
                 ai_reply TEXT,
-                status TEXT DEFAULT 'pending',   -- 'pending' | 'approved' | 'rejected' | 'edited'
+                status TEXT DEFAULT 'pending',
                 final_reply TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 resolved_at DATETIME
@@ -34,9 +34,9 @@ async def init_db():
                 approval_id TEXT,
                 caption TEXT NOT NULL,
                 image_path TEXT,
-                platforms TEXT NOT NULL,         -- JSON list: ["facebook","instagram","line"]
+                platforms TEXT NOT NULL,
                 scheduled_at DATETIME NOT NULL,
-                status TEXT DEFAULT 'pending_approval',  -- 'pending_approval' | 'approved' | 'posted' | 'rejected'
+                status TEXT DEFAULT 'pending_approval',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -49,9 +49,23 @@ async def init_db():
                 shoot_date TEXT,
                 notes TEXT,
                 email TEXT,
-                status TEXT DEFAULT 'new',  -- 'new' | 'follow_up' | 'in_progress' | 'paid' | 'rejected' | 'no_response'
+                status TEXT DEFAULT 'new',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS customer_state (
+                platform TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                stage TEXT DEFAULT 'new',
+                shoot_type TEXT,
+                num_looks TEXT,
+                product_type TEXT,
+                preferred_date TEXT,
+                follow_up_count INTEGER DEFAULT 0,
+                last_message_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_follow_up_at DATETIME,
+                PRIMARY KEY (platform, user_id)
             );
         """)
         await db.commit()
@@ -78,6 +92,68 @@ async def get_conversation(platform: str, user_id: str, limit: int = 10) -> list
         ) as cur:
             rows = await cur.fetchall()
     return [{"role": r["role"], "content": r["message"]} for r in reversed(rows)]
+
+
+async def get_customer_state(platform: str, user_id: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM customer_state WHERE platform=? AND user_id=?",
+            (platform, user_id),
+        ) as cur:
+            row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+_ALLOWED_STATE_COLS = {"stage", "shoot_type", "num_looks", "product_type", "preferred_date", "follow_up_count"}
+
+
+async def upsert_customer_state(platform: str, user_id: str, **fields):
+    """Create or update a customer's state. Only whitelisted columns are written."""
+    safe = {k: v for k, v in fields.items() if k in _ALLOWED_STATE_COLS}
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO customer_state (platform, user_id, last_message_at)
+               VALUES (?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(platform, user_id) DO UPDATE SET
+               last_message_at = CURRENT_TIMESTAMP""",
+            (platform, user_id),
+        )
+        for col, val in safe.items():
+            await db.execute(
+                f"UPDATE customer_state SET {col}=? WHERE platform=? AND user_id=?",
+                (val, platform, user_id),
+            )
+        await db.commit()
+
+
+async def mark_followup_sent(platform: str, user_id: str, new_count: int, new_stage: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """UPDATE customer_state
+               SET follow_up_count=?, stage=?, last_follow_up_at=CURRENT_TIMESTAMP
+               WHERE platform=? AND user_id=?""",
+            (new_count, new_stage, platform, user_id),
+        )
+        await db.commit()
+
+
+async def get_customers_needing_followup() -> list[dict]:
+    """Return Line customers who went quiet 48+ hours ago and still need follow-up."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT * FROM customer_state
+               WHERE platform = 'line'
+               AND stage IN ('service_inquiry', 'shoot_type_known', 'collecting')
+               AND follow_up_count < 2
+               AND last_message_at < datetime('now', '-48 hours')
+               AND (last_follow_up_at IS NULL
+                    OR last_follow_up_at < datetime('now', '-72 hours'))
+               ORDER BY last_message_at ASC""",
+        ) as cur:
+            rows = await cur.fetchall()
+    return [dict(r) for r in rows]
 
 
 async def save_approval(approval_id: str, data: dict):

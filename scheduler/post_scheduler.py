@@ -148,14 +148,27 @@ def start_scheduler():
         id="refresh_shoot_dates",
         timezone="UTC",
     )
+    # Proactive follow-ups every 4 hours
+    scheduler.add_job(
+        _run_followups,
+        "interval",
+        hours=4,
+        id="followup_check",
+    )
     scheduler.start()
-    logger.info("Scheduler started — posts every minute, dates refreshed daily at 08:00 BKK")
+    logger.info("Scheduler started — posts every 1 min, dates daily 08:00 BKK, follow-ups every 4 hrs")
 
 
 def _refresh_dates():
     import asyncio
     from scheduler.date_fetcher import refresh_upcoming_dates
     asyncio.create_task(refresh_upcoming_dates())
+
+
+def _run_followups():
+    import asyncio
+    from scheduler.followup_scheduler import check_and_send_followups
+    asyncio.create_task(check_and_send_followups())
 
 
 def stop_scheduler():

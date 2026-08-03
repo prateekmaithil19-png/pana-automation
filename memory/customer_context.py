@@ -1,5 +1,5 @@
 import re
-from database.db import get_conversation
+from database.db import get_conversation, get_customer_state, upsert_customer_state
 
 _SHOOT_TYPE_MULTIBRAND = re.compile(
     r"one stop|multibrand|multi.?brand|แชร์แบรนด์|one-stop|sharing|"
@@ -28,58 +28,131 @@ _DATE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_STAGE_GUIDANCE = {
+    "new": "New customer. Greet warmly and find out what they need.",
+    "service_inquiry": "Customer is exploring services. Find out: are they interested in One Stop Service (multibrand) or Individual Brand Shoot?",
+    "shoot_type_known": "Shoot type is known (see below). Now collect missing details: number of looks, product type, preferred timing.",
+    "collecting": "Requirements being gathered. Review what's already known below — only ask for what's still missing.",
+    "quote_requested": "This customer's quote has already been sent to admin. If they ask for an update, say the team is preparing it.",
+    "cold": "Customer was previously unresponsive to follow-ups. Re-engage warmly but do not push.",
+    "booked": "Customer has confirmed a booking. Focus on pre-shoot preparation and logistics.",
+}
 
-async def build_customer_context(platform: str, user_id: str) -> str:
-    history = await get_conversation(platform, user_id)
-    if not history:
-        return ""
 
-    customer_messages = [
-        t["content"] for t in history if t.get("role") in ("customer", "user")
-    ]
-    if not customer_messages:
-        return ""
+def _extract_facts(messages: list[str]) -> dict:
+    combined = " ".join(messages[-10:])
+    facts = {}
 
-    combined = " ".join(customer_messages[-10:])
-    facts = []
-
-    # Shoot type
     if _SHOOT_TYPE_MULTIBRAND.search(combined):
-        facts.append("shoot_type = One Stop Service (multibrand/shared)")
+        facts["shoot_type"] = "One Stop Service (multibrand/shared)"
     elif _SHOOT_TYPE_INDIVIDUAL.search(combined):
-        facts.append("shoot_type = Individual Brand Shoot (custom/exclusive)")
+        facts["shoot_type"] = "Individual Brand Shoot (custom/exclusive)"
 
-    # Number of looks
     look_match = _LOOK_COUNT.search(combined)
     if look_match:
-        facts.append(f"num_looks = {look_match.group(1)}")
+        facts["num_looks"] = look_match.group(1)
 
-    # Product types mentioned
     product_matches = list({m.group(0).lower() for m in _PRODUCT_TYPE.finditer(combined)})
     if product_matches:
-        facts.append(f"product_type = {', '.join(product_matches[:3])}")
+        facts["product_type"] = ", ".join(product_matches[:3])
 
-    # Dates mentioned
     date_matches = _DATE_PATTERN.findall(combined)
-    flat_dates = [d if isinstance(d, str) else next((x for x in d if x), "") for d in date_matches]
-    flat_dates = [d for d in flat_dates if d]
-    if flat_dates:
-        facts.append(f"dates_mentioned = {', '.join(flat_dates[:3])}")
+    flat = [d if isinstance(d, str) else next((x for x in d if x), "") for d in date_matches]
+    flat = [d for d in flat if d]
+    if flat:
+        facts["preferred_date"] = ", ".join(flat[:3])
 
-    if not facts:
-        # No structured facts found — pass recent raw messages as fallback
-        recent_raw = "\n".join(f"- {m}" for m in customer_messages[-5:])
-        return f"""
-## Customer conversation memory
-{recent_raw}
+    return facts
 
-Do NOT ask for information already mentioned above.
-"""
 
-    facts_text = "\n".join(f"- {f}" for f in facts)
-    return f"""
-## What we already know about this customer
-{facts_text}
+def _determine_stage(persisted_stage: str, facts: dict, num_customer_turns: int) -> str:
+    # Never downgrade terminal stages
+    if persisted_stage in ("quote_requested", "cold", "booked"):
+        return persisted_stage
 
-Do NOT re-ask for any information listed above. Reference these facts in your reply.
-"""
+    if num_customer_turns == 0:
+        return "new"
+
+    shoot_type = facts.get("shoot_type")
+    detail_count = sum(1 for k in ("num_looks", "product_type", "preferred_date") if facts.get(k))
+
+    if shoot_type and detail_count >= 1:
+        return "collecting"
+    if shoot_type:
+        return "shoot_type_known"
+    return "service_inquiry"
+
+
+async def update_customer_state(
+    platform: str,
+    user_id: str,
+    history: list[dict],
+    force_stage: str | None = None,
+):
+    """Extract facts from history and persist to customer_state table."""
+    customer_messages = [t["content"] for t in history if t.get("role") in ("customer", "user")]
+    facts = _extract_facts(customer_messages) if customer_messages else {}
+
+    current = await get_customer_state(platform, user_id)
+    persisted_stage = current.get("stage", "new") if current else "new"
+
+    stage = force_stage if force_stage else _determine_stage(persisted_stage, facts, len(customer_messages))
+
+    update_fields: dict = {"stage": stage, "follow_up_count": 0}
+    for key in ("shoot_type", "num_looks", "product_type", "preferred_date"):
+        if facts.get(key):
+            update_fields[key] = facts[key]
+
+    await upsert_customer_state(platform, user_id, **update_fields)
+
+
+async def build_customer_context(platform: str, user_id: str) -> str:
+    """Build the context block injected into the system prompt."""
+    history = await get_conversation(platform, user_id)
+    state = await get_customer_state(platform, user_id)
+
+    customer_messages = [t["content"] for t in history if t.get("role") in ("customer", "user")]
+    fresh_facts = _extract_facts(customer_messages) if customer_messages else {}
+
+    # Merge: DB state is the source of truth; fresh extraction adds anything new
+    merged: dict = {}
+    if state:
+        for k in ("shoot_type", "num_looks", "product_type", "preferred_date"):
+            if state.get(k):
+                merged[k] = state[k]
+    for k, v in fresh_facts.items():
+        if v:
+            merged[k] = v  # fresh message wins if it adds new info
+
+    stage = state.get("stage", "new") if state else "new"
+
+    if not merged and not history:
+        return ""
+
+    lines = []
+
+    # Stage header — tells the agent exactly where it is in the funnel
+    lines.append(f"## Conversation Stage: {stage.upper()}")
+    guidance = _STAGE_GUIDANCE.get(stage, "")
+    if guidance:
+        lines.append(f"Agent guidance: {guidance}")
+
+    if merged:
+        lines.append("")
+        lines.append("## Already known — DO NOT ask again")
+        label_map = {
+            "shoot_type": "Shoot type",
+            "num_looks": "Number of looks",
+            "product_type": "Product type",
+            "preferred_date": "Preferred date/timing",
+        }
+        for k, v in merged.items():
+            lines.append(f"- {label_map.get(k, k)}: {v}")
+    elif customer_messages:
+        lines.append("")
+        lines.append("## Recent customer messages (for context)")
+        for m in customer_messages[-5:]:
+            lines.append(f"- {m}")
+        lines.append("Do NOT repeat questions already answered above.")
+
+    return "\n".join(lines)

@@ -13,7 +13,7 @@ from ai.engine import generate_reply
 from ai.prompts import build_system_prompt
 from approval.store import create_reply_approval
 from database.db import add_message, get_conversation
-from memory.customer_context import build_customer_context
+from memory.customer_context import build_customer_context, update_customer_state
 from notifications.email_notify import send_reply_approval_email
 from notifications.line_notify import notify_reply_approval
 
@@ -85,6 +85,9 @@ async def _handle_line_message(user_id: str, text: str, reply_token: str):
         ack = "ขอบคุณที่สอบถามนะคะ 🙏 ทางเรากำลังเตรียมข้อมูลให้ รอสักครู่นะคะ"
         await _line_reply(reply_token, ack)
 
+        # Mark stage as quote_requested so follow-up scheduler skips this customer
+        await update_customer_state("line", user_id, history, force_stage="quote_requested")
+
         try:
             await send_reply_approval_email(approval_id, "line", text, ai_reply)
         except Exception:
@@ -97,6 +100,8 @@ async def _handle_line_message(user_id: str, text: str, reply_token: str):
         ai_reply = await generate_reply(text, history, system_prompt=system_prompt)
         await add_message("line", user_id, "assistant", ai_reply)
         await _line_reply(reply_token, ai_reply)
+        # Persist extracted state so next turn knows what was already discussed
+        await update_customer_state("line", user_id, history)
 
 
 @router.post("/webhook/line")
