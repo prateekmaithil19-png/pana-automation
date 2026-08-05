@@ -134,6 +134,7 @@ async def _call_pateway(
     payload = {
         "model": config.PATEWAY_MODEL,
         "messages": messages,
+        "max_tokens": max_tokens,
     }
 
     async with httpx.AsyncClient() as client:

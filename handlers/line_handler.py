@@ -61,7 +61,13 @@ async def _download_line_image(message_id: str) -> bytes:
 
 async def _handle_line_image(user_id: str, message_id: str, reply_token: str):
     history = await get_conversation("line", user_id)
-    system_prompt = await _build_prompt(user_id)
+    # Infer language from the most recent customer text in history
+    recent_text = next(
+        (t["content"] for t in reversed(history) if t.get("role") in ("customer", "user")),
+        "",
+    )
+    lang = detect_language(recent_text)
+    system_prompt = await _build_prompt(user_id, lang=lang)
 
     try:
         image_bytes = await _download_line_image(message_id)
@@ -160,6 +166,39 @@ async def _handle_line_message(user_id: str, text: str, reply_token: str):
         await update_customer_state("line", user_id, updated_history)
 
 
+async def _handle_unsupported_message(user_id: str, msg_type: str, reply_token: str):
+    """Send a warm acknowledgment for stickers, audio, video, file, or location messages.
+
+    Stickers are extremely common in Thai chat apps — silently dropping them
+    creates a poor experience.  We infer language from history so the reply
+    feels natural.
+    """
+    history = await get_conversation("line", user_id)
+    recent_text = next(
+        (t["content"] for t in reversed(history) if t.get("role") in ("customer", "user")),
+        "",
+    )
+    lang = detect_language(recent_text)
+
+    if msg_type == "sticker":
+        ack = "😊🙏" if lang == "th" else "😊"
+    elif msg_type == "location":
+        ack = (
+            "ขอบคุณที่แชร์ตำแหน่งนะคะ 📍 มีอะไรให้ช่วยเพิ่มเติมได้เลยค่ะ"
+            if lang == "th"
+            else "Thanks for sharing your location! 📍 Feel free to let us know how we can help."
+        )
+    else:
+        ack = (
+            "ขอบคุณที่ส่งข้อมูลมานะคะ 🙏 ทีมงานจะตรวจสอบและติดต่อกลับค่ะ"
+            if lang == "th"
+            else "Thank you for sending that! 🙏 Our team will review it and get back to you."
+        )
+
+    await _line_reply(reply_token, ack)
+    logger.info("Acknowledged unsupported message type '%s' for user %s", msg_type, user_id)
+
+
 @router.post("/webhook/line")
 async def line_webhook(request: Request):
     body = await request.body()
@@ -181,14 +220,18 @@ async def line_webhook(request: Request):
             continue
 
         try:
-            if msg.get("type") == "text":
+            msg_type = msg.get("type")
+            if msg_type == "text":
                 text = msg.get("text", "").strip()
                 if text:
                     await _handle_line_message(user_id, text, reply_token)
-            elif msg.get("type") == "image":
+            elif msg_type == "image":
                 message_id = msg.get("id")
                 if message_id:
                     await _handle_line_image(user_id, message_id, reply_token)
+            elif msg_type in ("sticker", "audio", "video", "file", "location"):
+                # Acknowledge non-text messages warmly instead of silently dropping them
+                await _handle_unsupported_message(user_id, msg_type, reply_token)
         except Exception:
             logger.exception("Error handling Line event from %s", user_id)
 

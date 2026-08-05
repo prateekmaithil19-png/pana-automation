@@ -121,8 +121,14 @@ def is_confidentiality_probe(message: str) -> bool:
 
 
 def detect_language(message: str) -> str:
-    if not message:
-        return "en"
+    """Detect whether a message is primarily Thai or English.
+
+    Defaults to 'th' for empty/ambiguous messages — this is a Thai business
+    and the majority of customers write Thai.
+    """
+    if not message or not message.strip():
+        return "th"
+    # Thai Unicode block: U+0E00–U+0E7F
     thai_chars = sum(1 for c in message if "฀" <= c <= "๿")
     ratio = thai_chars / len(message)
     return "th" if ratio > 0.15 else "en"

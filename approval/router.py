@@ -6,7 +6,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 import config
-from database.db import get_approval, save_correction_example, update_approval, update_post_status
+from database.db import add_message, get_approval, save_correction_example, update_approval, update_post_status
+from memory.customer_context import update_customer_state
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -41,12 +42,21 @@ async def _send_line_push(user_id: str, text: str):
 
 
 async def _deliver_reply(approval: dict, final_text: str):
+    """Send the approved reply to the customer and record it in conversation history."""
     platform = approval.get("platform", "")
     user_id = approval.get("user_id", "")
     if platform == "line":
         await _send_line_push(user_id, final_text)
     else:
         await _send_meta_reply(platform, user_id, final_text)
+
+    # Save the delivered reply so the AI remembers it in the next turn.
+    # Without this, the customer gets the reply but the AI has no memory it was sent.
+    if platform and user_id:
+        try:
+            await add_message(platform, user_id, "assistant", final_text)
+        except Exception:
+            pass  # Non-critical — message was already sent
 
 
 @router.get("/approve/{approval_id}", response_class=HTMLResponse)

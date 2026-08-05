@@ -40,12 +40,20 @@ _DATE_PATTERN = re.compile(
 _STAGE_GUIDANCE = {
     "new": "New customer. Greet warmly and find out what they need.",
     "service_inquiry": "Customer is exploring services. Find out: are they interested in One Stop Service (multibrand) or Individual Brand Shoot?",
-    "shoot_type_known": "Shoot type is known (see below). Now collect missing details: number of looks, product type, preferred timing.",
-    "collecting": "Requirements being gathered. Review what's already known below — only ask for what's still missing.",
+    "shoot_type_known": "Shoot type is known (see below). Collect what's still missing — see checklist below.",
+    "collecting": "Requirements being gathered. See the checklist below — ONLY ask about fields marked ❌. Do NOT re-ask anything marked ✅.",
     "quote_requested": "This customer's quote has already been sent to admin. If they ask for an update, say the team is preparing it.",
     "cold": "Customer was previously unresponsive to follow-ups. Re-engage warmly but do not push.",
     "booked": "Customer has confirmed a booking. Focus on pre-shoot preparation and logistics.",
 }
+
+# Fields required before a quote can be prepared, in priority order
+_REQUIRED_FIELDS = [
+    ("shoot_type", "Shoot type (One Stop Service or Individual Brand Shoot)"),
+    ("product_type", "Product type"),
+    ("num_looks", "Number of looks"),
+    ("preferred_date", "Preferred date / timing"),
+]
 
 
 def _extract_facts(messages: list[str]) -> dict:
@@ -165,22 +173,31 @@ async def build_customer_context(platform: str, user_id: str) -> str:
     if guidance:
         lines.append(f"Agent guidance: {guidance}")
 
-    if merged:
+    # Build an explicit checklist so the AI knows exactly what's done and what's next
+    if stage in ("shoot_type_known", "collecting", "service_inquiry") or merged:
         lines.append("")
-        lines.append("## Already known — DO NOT ask again")
-        label_map = {
-            "shoot_type": "Shoot type",
-            "num_looks": "Number of looks",
-            "product_type": "Product type",
-            "preferred_date": "Preferred date/timing",
-        }
-        for k, v in merged.items():
-            lines.append(f"- {label_map.get(k, k)}: {v}")
+        lines.append("## Requirements checklist")
+        missing: list[str] = []
+        for key, label in _REQUIRED_FIELDS:
+            value = merged.get(key)
+            if value:
+                lines.append(f"- ✅ {label}: {value}")
+            else:
+                lines.append(f"- ❌ {label}: not yet collected")
+                missing.append(label)
+
+        if missing:
+            # Tell the AI which single field to ask about next (highest priority missing)
+            lines.append("")
+            lines.append(f"→ Ask about next (ONE question only): **{missing[0]}**")
+        else:
+            lines.append("")
+            lines.append("→ All requirements collected. You may offer to prepare a quotation.")
+
     elif customer_messages:
         lines.append("")
         lines.append("## Recent customer messages (for context)")
         for m in customer_messages[-5:]:
             lines.append(f"- {m}")
-        lines.append("Do NOT repeat questions already answered above.")
 
     return "\n".join(lines)
