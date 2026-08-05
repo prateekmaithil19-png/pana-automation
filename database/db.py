@@ -76,6 +76,10 @@ async def init_db():
                 corrected_reply TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+
+            -- Speed up the per-user conversation lookups (most frequent query)
+            CREATE INDEX IF NOT EXISTS idx_conversations_lookup
+                ON conversations(platform, user_id, created_at DESC);
         """)
         await db.commit()
     await _migrate_existing_tables()
@@ -129,9 +133,14 @@ _ALLOWED_STATE_COLS = {"stage", "shoot_type", "num_looks", "product_type", "pref
 
 
 async def upsert_customer_state(platform: str, user_id: str, **fields):
-    """Create or update a customer's state. Only whitelisted columns are written."""
+    """Create or update a customer's state. Only whitelisted columns are written.
+
+    Uses a single batched UPDATE so all field changes land in one atomic write
+    instead of N sequential queries.
+    """
     safe = {k: v for k, v in fields.items() if k in _ALLOWED_STATE_COLS}
     async with aiosqlite.connect(DB_PATH) as db:
+        # Ensure the row exists and always touch last_message_at
         await db.execute(
             """INSERT INTO customer_state (platform, user_id, last_message_at)
                VALUES (?, ?, CURRENT_TIMESTAMP)
@@ -139,10 +148,11 @@ async def upsert_customer_state(platform: str, user_id: str, **fields):
                last_message_at = CURRENT_TIMESTAMP""",
             (platform, user_id),
         )
-        for col, val in safe.items():
+        if safe:
+            set_clause = ", ".join(f"{col}=?" for col in safe)
             await db.execute(
-                f"UPDATE customer_state SET {col}=? WHERE platform=? AND user_id=?",
-                (val, platform, user_id),
+                f"UPDATE customer_state SET {set_clause} WHERE platform=? AND user_id=?",
+                [*safe.values(), platform, user_id],
             )
         await db.commit()
 

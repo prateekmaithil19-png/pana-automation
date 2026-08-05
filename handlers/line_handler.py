@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 import config
-from ai.classifier import is_pricing_request, is_escalation_needed, is_confidentiality_probe
+from ai.classifier import is_pricing_request, is_escalation_needed, is_confidentiality_probe, detect_language
 from ai.engine import generate_reply, generate_reply_with_image
 from ai.prompts import build_system_prompt
 from approval.store import create_reply_approval
@@ -41,10 +41,11 @@ async def _line_reply(reply_token: str, text: str):
         )
 
 
-async def _build_prompt(user_id: str) -> str:
+async def _build_prompt(user_id: str, lang: str = "th") -> str:
+    """Build the system prompt, using detected language to bias example selection."""
     customer_memory = await build_customer_context("line", user_id)
     corrections = await get_recent_corrections()
-    return build_system_prompt(customer_memory=customer_memory, corrections=corrections)
+    return build_system_prompt(customer_memory=customer_memory, corrections=corrections, lang=lang)
 
 
 async def _download_line_image(message_id: str) -> bytes:
@@ -81,13 +82,18 @@ async def _handle_line_image(user_id: str, message_id: str, reply_token: str):
 
     await add_message("line", user_id, "assistant", ai_reply)
     await _line_reply(reply_token, ai_reply)
-    await update_customer_state("line", user_id, history)
+    # Refresh history so the image turn (customer + assistant) is included in fact extraction
+    updated_history = await get_conversation("line", user_id)
+    await update_customer_state("line", user_id, updated_history)
 
 
 async def _handle_line_message(user_id: str, text: str, reply_token: str):
     history = await get_conversation("line", user_id)
     await add_message("line", user_id, "customer", text)
-    system_prompt = await _build_prompt(user_id)
+
+    # Detect language once — used for prompt bias and fallback message selection
+    lang = detect_language(text)
+    system_prompt = await _build_prompt(user_id, lang=lang)
 
     # Confidentiality probe — log silently so Deen can review; agent handles it via prompt
     if is_confidentiality_probe(text):
@@ -123,11 +129,19 @@ async def _handle_line_message(user_id: str, text: str, reply_token: str):
         approval_id = await create_reply_approval("line", user_id, text, ai_reply)
 
         # Acknowledge the customer immediately while admin reviews
-        ack = "ขอบคุณที่สอบถามนะคะ 🙏 ทางเรากำลังเตรียมข้อมูลให้ รอสักครู่นะคะ"
+        ack = (
+            "ขอบคุณที่สอบถามนะคะ 🙏 ทางเรากำลังเตรียมข้อมูลให้ รอสักครู่นะคะ"
+            if lang == "th"
+            else "Thank you for your enquiry! 🙏 We're preparing the details for you — please give us a moment."
+        )
         await _line_reply(reply_token, ack)
 
-        # Mark stage as quote_requested so follow-up scheduler skips this customer
-        await update_customer_state("line", user_id, history, force_stage="quote_requested")
+        # Save the ack so the next turn has full conversation context
+        await add_message("line", user_id, "assistant", ack)
+
+        # Refresh history (now includes current customer message + ack) before state update
+        updated_history = await get_conversation("line", user_id)
+        await update_customer_state("line", user_id, updated_history, force_stage="quote_requested")
 
         try:
             await send_reply_approval_email(approval_id, "line", text, ai_reply)
@@ -141,8 +155,9 @@ async def _handle_line_message(user_id: str, text: str, reply_token: str):
         ai_reply = await generate_reply(text, history, system_prompt=system_prompt)
         await add_message("line", user_id, "assistant", ai_reply)
         await _line_reply(reply_token, ai_reply)
-        # Persist extracted state so next turn knows what was already discussed
-        await update_customer_state("line", user_id, history)
+        # Refresh history (includes current message pair) before persisting state
+        updated_history = await get_conversation("line", user_id)
+        await update_customer_state("line", user_id, updated_history)
 
 
 @router.post("/webhook/line")

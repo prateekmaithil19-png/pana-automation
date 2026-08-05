@@ -6,9 +6,13 @@ from google import genai
 from google.genai import types
 import config
 from ai.prompts import build_system_prompt
+from ai.classifier import detect_language
 
 logger = logging.getLogger(__name__)
 
+# ── Reply cleanup ─────────────────────────────────────────────────────────────
+
+# Strip leaked internal-thinking artifacts (markdown bold headers, draft labels)
 _THINKING_RE = re.compile(
     r"(\*\*Drafting Options.*?\*\*|"
     r"\*\*Internal Monologue.*?\*\*|"
@@ -17,9 +21,33 @@ _THINKING_RE = re.compile(
     re.DOTALL | re.IGNORECASE,
 )
 
+# Strip common LLM meta-preamble that leaks into customer-facing text
+_PREFIX_RE = re.compile(
+    r"^(?:"
+    # "Here's my reply:" / "Here is the response:" etc.
+    r"Here(?:'s| is)(?: my| the)? (?:reply|response|answer|message)[:\.\s]+"
+    # "Sure, here's my reply:" etc.
+    r"|(?:Sure|Okay|Certainly|Of course|Absolutely)[,!]?\s+[Hh]ere(?:'s| is) (?:my |the )?(?:reply|response|answer|message)[:\.\s]+"
+    # "Let me think/draft/write/craft/compose..." on its own line
+    r"|Let me (?:think|draft|write|craft|compose) [^\n]*\n+"
+    r")",
+    re.IGNORECASE,
+)
+
+# Language-appropriate fallback when all LLM providers fail
+_FALLBACK_MESSAGES = {
+    "th": "ขอบคุณที่สอบถามนะคะ 🙏 ทางเราจะติดต่อกลับเร็วๆ นี้ค่ะ",
+    "en": "Thank you for reaching out! 🙏 Our team will get back to you shortly.",
+}
+_VISION_FALLBACK_MESSAGES = {
+    "th": "ขอบคุณที่ส่งรูปมานะคะ 🙏 ทีมงานจะดูรายละเอียดและติดต่อกลับเร็วๆ นี้ค่ะ",
+    "en": "Thank you for sharing the photo! 🙏 Our team will review it and be in touch shortly.",
+}
+
 
 def _clean_reply(text: str) -> str:
     cleaned = _THINKING_RE.sub("", text)
+    cleaned = _PREFIX_RE.sub("", cleaned)
     return cleaned.strip()
 
 
@@ -218,7 +246,8 @@ async def generate_reply(
             logger.warning("LLM provider '%s' failed: %s", provider, e)
 
     logger.error("All configured LLM providers failed or returned empty response.")
-    return "ขอบคุณที่สอบถามนะคะ 🙏 ทางเราจะติดต่อกลับเร็วๆ นี้ค่ะ"
+    lang = detect_language(customer_message)
+    return _FALLBACK_MESSAGES.get(lang, _FALLBACK_MESSAGES["th"])
 
 
 # ── Vision (image analysis) ───────────────────────────────────────────────────
@@ -323,11 +352,24 @@ async def generate_reply_with_image(
     system_prompt: str | None = None,
     max_tokens: int = 800,
 ) -> str:
-    """Analyze a customer-sent image and reply. Tries Gemini vision first, then Claude."""
+    """Analyze a customer-sent image and reply. Respects LLM_PROVIDERS order for vision-capable providers."""
     if system_prompt is None:
         system_prompt = build_system_prompt()
 
-    for provider, fn in [("gemini", _call_gemini_vision), ("claude", _call_claude_vision)]:
+    # Only Gemini and Claude support vision — respect the configured provider order
+    _vision_map = {
+        "gemini": _call_gemini_vision,
+        "claude": _call_claude_vision,
+    }
+    configured = [p.strip().lower() for p in config.LLM_PROVIDERS.split(",") if p.strip()]
+    vision_providers = [(p, _vision_map[p]) for p in configured if p in _vision_map]
+    if not vision_providers:
+        # Graceful default if config has no vision-capable provider listed
+        vision_providers = [("gemini", _call_gemini_vision), ("claude", _call_claude_vision)]
+
+    lang = detect_language(customer_message)
+
+    for provider, fn in vision_providers:
         try:
             logger.info("Attempting vision with provider: %s", provider)
             raw = await fn(image_bytes, customer_message, conversation_history, system_prompt, max_tokens)
@@ -337,4 +379,4 @@ async def generate_reply_with_image(
             logger.warning("Vision provider '%s' failed: %s", provider, e)
 
     logger.error("All vision providers failed")
-    return "ขอบคุณที่ส่งรูปมานะคะ 🙏 ทีมงานจะดูรายละเอียดและติดต่อกลับเร็วๆ นี้ค่ะ"
+    return _VISION_FALLBACK_MESSAGES.get(lang, _VISION_FALLBACK_MESSAGES["th"])

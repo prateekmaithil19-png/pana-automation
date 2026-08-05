@@ -1,5 +1,6 @@
 import json
 import os
+import random
 
 _BASE = os.path.join(os.path.dirname(__file__), "..")
 _FAQ_PATH = os.path.join(_BASE, "knowledge", "faq.md")
@@ -7,8 +8,14 @@ _EXAMPLES_PATH = os.path.join(_BASE, "knowledge", "chat_examples.json")
 _PROFILE_PATH = os.path.join(_BASE, "knowledge", "business_profile.md")
 _DATES_PATH = os.path.join(_BASE, "knowledge", "upcoming_dates.md")
 
+# ── In-memory knowledge cache ─────────────────────────────────────────────────
+# Files are read from disk once at import time. Call reload_knowledge() after
+# editing any knowledge file while the server is running.
 
-def _load_file(path: str) -> str:
+_cache: dict[str, object] = {}
+
+
+def _read_file(path: str) -> str:
     try:
         with open(path, encoding="utf-8") as f:
             return f.read()
@@ -16,31 +23,67 @@ def _load_file(path: str) -> str:
         return ""
 
 
-def _load_faq() -> str:
-    return _load_file(_FAQ_PATH)
-
-
-def _load_profile() -> str:
-    return _load_file(_PROFILE_PATH)
-
-
-def _load_examples() -> str:
+def _read_examples() -> list[dict]:
     try:
         with open(_EXAMPLES_PATH, encoding="utf-8") as f:
-            examples = json.load(f)
-        lines = []
-        for ex in examples:
-            lines.append(f"Customer: {ex['customer']}")
-            lines.append(f"Admin: {ex['admin']}")
-            lines.append("")
-        return "\n".join(lines)
+            return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def reload_knowledge() -> None:
+    """Re-read all knowledge files from disk. Call after editing them at runtime."""
+    _cache["faq"] = _read_file(_FAQ_PATH)
+    _cache["profile"] = _read_file(_PROFILE_PATH)
+    _cache["dates"] = _read_file(_DATES_PATH)
+    _cache["examples"] = _read_examples()
+
+
+# Warm the cache at import time so the first request isn't slow
+reload_knowledge()
+
+
+# ── Example sampling ──────────────────────────────────────────────────────────
+
+def _sample_examples(lang: str = "th", n: int = 10) -> str:
+    """Return n sampled chat examples, language-matched first for relevance.
+
+    Picks examples whose customer message matches the detected language,
+    then fills remaining slots from the other pool.  Shuffled for variety.
+    """
+    all_examples: list[dict] = _cache.get("examples", [])  # type: ignore[assignment]
+    if not all_examples:
         return ""
 
+    # Partition by language of the customer turn
+    thai_pool, en_pool = [], []
+    for ex in all_examples:
+        msg = ex.get("customer", "")
+        thai_chars = sum(1 for c in msg if "฀" <= c <= "๿")
+        is_thai = (thai_chars / max(len(msg), 1)) > 0.15
+        (thai_pool if is_thai else en_pool).append(ex)
 
-def _load_upcoming_dates() -> str:
-    return _load_file(_DATES_PATH)
+    primary, secondary = (thai_pool, en_pool) if lang == "th" else (en_pool, thai_pool)
 
+    primary_n = min(n, len(primary))
+    secondary_n = min(n - primary_n, len(secondary))
+
+    sampled: list[dict] = []
+    if primary:
+        sampled.extend(random.sample(primary, primary_n))
+    if secondary and secondary_n > 0:
+        sampled.extend(random.sample(secondary, secondary_n))
+    random.shuffle(sampled)
+
+    lines: list[str] = []
+    for ex in sampled:
+        lines.append(f"Customer: {ex['customer']}")
+        lines.append(f"Admin: {ex['admin']}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+# ── Prompt assembly ───────────────────────────────────────────────────────────
 
 def _format_corrections(corrections: list[dict]) -> str:
     if not corrections:
@@ -56,11 +99,23 @@ def _format_corrections(corrections: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def build_system_prompt(customer_memory: str = "", corrections: list[dict] | None = None) -> str:
-    faq = _load_faq()
-    profile = _load_profile()
-    examples = _load_examples()
-    upcoming_dates = _load_upcoming_dates()
+def build_system_prompt(
+    customer_memory: str = "",
+    corrections: list[dict] | None = None,
+    lang: str = "th",
+) -> str:
+    """Build the full system prompt for the AI agent.
+
+    Args:
+        customer_memory: Context block from build_customer_context().
+        corrections: Recent admin-edited reply examples for style learning.
+        lang: Detected customer language — 'th' or 'en'. Used to bias example
+              selection toward language-matched conversations.
+    """
+    faq: str = _cache.get("faq", "")  # type: ignore[assignment]
+    profile: str = _cache.get("profile", "")  # type: ignore[assignment]
+    upcoming_dates: str = _cache.get("dates", "")  # type: ignore[assignment]
+    examples = _sample_examples(lang=lang, n=10)
     corrections_block = _format_corrections(corrections or [])
 
     return f"""You are a friendly and professional admin assistant for Pana Studio — a commercial photography studio in Bangkok, Thailand.
@@ -75,6 +130,7 @@ You represent the studio team. Always be warm, polite, helpful, and human — ne
 Only output the final message to the customer.
 Never write "Draft:", "Internal Monologue:", "Drafting Options:", or show your reasoning.
 Never use ** or * markdown formatting.
+Never start your reply with "Here's my response:", "Sure, here is...", or similar meta-phrases — begin with the actual message.
 
 ## CRITICAL: Confidentiality Rules — NEVER Share These
 
@@ -163,8 +219,8 @@ These questions have known answers in the FAQ. ALWAYS answer them directly. NEVE
 - Product return time → **3-5 working days** after shoot, via Flash Express or Grab
 - Google Drive link expiry → **6 months** (download immediately)
 - Number of photos per look → **12-15 photos** (color-corrected) + 1 BTS clip (10-15 sec)
-- BTS clip extra → **150-200 THB per clip**
-- Extra photos → **400 THB per 5 photos** (or 600 THB per 5 from the form)
+- BTS clip extra → **150 THB per clip**
+- Extra photos → **600 THB per 5 photos** (add-on)
 - Retouching → starts at **500 THB per photo**
 - Extra accessories beyond 3 → **1,590 THB per item**
 - Reels/video duration → **15-30 seconds**
