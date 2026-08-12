@@ -249,6 +249,15 @@ async def get_admin_contacts(platform: str = "line") -> list[dict]:
     return [dict(r) for r in rows]
 
 
+async def delete_admin_contact(platform: str, user_id: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM admin_contacts WHERE platform=? AND user_id=?",
+            (platform, user_id),
+        )
+        await db.commit()
+
+
 async def mark_followup_sent(platform: str, user_id: str, new_count: int, new_stage: str):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
@@ -535,12 +544,21 @@ async def delete_lead(lead_id: int):
 
 async def _seed_admin_contact():
     """Seed Dean's and Pat's Line userIds as default handoff-notification
-    recipients, captured from their LOAM chat URLs. Safe to run on every
-    startup — plain upserts keyed on (platform, user_id), so they never create
-    duplicates. Anyone can also self-register later via the
-    "register pana admin" phrase, which just adds another row."""
-    await save_admin_contact("line", "Uf7f5f04fe8cd9363d0dfad787c83daa7", label="Dean")
-    await save_admin_contact("line", "Ub0ff27fcafa7fe69d5a61fc1fc0ccfe6", label="Pat")
+    recipients. Safe to run on every startup — plain upserts keyed on
+    (platform, user_id), so they never create duplicates.
+
+    The IDs below are the real, verified userIds captured when each of them
+    sent "register pana admin" from her own Line account. An earlier version
+    of this function seeded IDs guessed from their LOAM chat URLs
+    (Uf7f5f04fe8cd9363d0dfad787c83daa7 for Dean, Ub0ff27fcafa7fe69d5a61fc1fc0ccfe6
+    for Pat) — those turned out to be wrong (LINE push API rejected them with
+    400, confirmed live), so they're explicitly deleted here rather than left
+    to linger and fail silently on every notification.
+    """
+    await delete_admin_contact("line", "Uf7f5f04fe8cd9363d0dfad787c83daa7")
+    await delete_admin_contact("line", "Ub0ff27fcafa7fe69d5a61fc1fc0ccfe6")
+    await save_admin_contact("line", "U30f1a999bf0a07799e46543cdc081697", label="Dean")
+    await save_admin_contact("line", "Ua1a4533935574750324171fb88121e15", label="Pat")
 
 
 async def _seed_leads():
