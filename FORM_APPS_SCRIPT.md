@@ -29,7 +29,11 @@ function onFormSubmit(e) {
     answers[question] = namedValues[question][0];
   }
 
-  var formTitle = SpreadsheetApp.getActiveSpreadsheet().getName();
+  // Use e.source, not SpreadsheetApp.getActiveSpreadsheet() — the latter
+  // returns null for a standalone script's trigger (only works when the
+  // script is bound to the sheet it's running in), which throws
+  // "Cannot read properties of null (reading 'getName')".
+  var formTitle = e.source.getName();
 
   var payload = {
     form_title: formTitle,
@@ -61,3 +65,9 @@ function onFormSubmit(e) {
   does **not** carry over automatically — repeat step 4 for each new response
   Sheet, or better, keep reusing one shared response Sheet across shoots if
   your workflow allows it.
+- When checking the **Executions** tab to debug a failure, check the **Type**
+  column — clicking ▶ Run in the editor logs as `Editor` and always fails
+  with "Cannot read properties of undefined (reading 'namedValues')" since
+  there's no real form data to pass in; that's expected and not a bug. Only
+  `Type: Trigger` entries (from an actual form submission) reflect real
+  errors worth debugging.
