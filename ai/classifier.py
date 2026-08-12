@@ -147,11 +147,22 @@ def detect_language(message: str) -> str:
     """Detect whether a message is primarily Thai or English.
 
     Defaults to 'th' for empty/ambiguous messages — this is a Thai business
-    and the majority of customers write Thai.
+    and the majority of customers write Thai. Only switches to 'en' when the
+    message actually contains real English content — a message with no Thai
+    AND no meaningful Latin-alphabet content (a number, an emoji, ".", a
+    single stray character) previously fell through to 'en' purely because
+    the Thai ratio was 0, which would incorrectly flip a Thai conversation to
+    English mid-chat. Now that case stays 'th' instead.
     """
     if not message or not message.strip():
         return "th"
     # Thai Unicode block: U+0E00–U+0E7F
     thai_chars = sum(1 for c in message if "฀" <= c <= "๿")
-    ratio = thai_chars / len(message)
-    return "th" if ratio > 0.15 else "en"
+    if thai_chars > 0:
+        ratio = thai_chars / len(message)
+        if ratio > 0.15:
+            return "th"
+    # No (or too little) Thai — only call it English if there's real Latin
+    # alphabetic content to back that up, not just digits/punctuation/emoji.
+    latin_letters = sum(1 for c in message if c.isascii() and c.isalpha())
+    return "en" if latin_letters >= 2 else "th"
