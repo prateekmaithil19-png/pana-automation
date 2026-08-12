@@ -249,6 +249,21 @@ async def get_admin_contacts(platform: str = "line") -> list[dict]:
     return [dict(r) for r in rows]
 
 
+async def get_admin_contact_by_label(platform: str, label: str) -> dict | None:
+    """Return a specific admin by label (e.g. "Dean"), case-insensitive —
+    used where a notification should reach only one specific person rather
+    than every registered admin."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM admin_contacts WHERE platform=? AND lower(label)=lower(?) "
+            "ORDER BY created_at DESC LIMIT 1",
+            (platform, label),
+        ) as cur:
+            row = await cur.fetchone()
+    return dict(row) if row else None
+
+
 async def delete_admin_contact(platform: str, user_id: str):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(

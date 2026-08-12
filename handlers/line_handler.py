@@ -25,7 +25,7 @@ from database.db import (
     get_customer_state,
     set_human_controlled,
     save_admin_contact,
-    get_admin_contacts,
+    get_admin_contact_by_label,
 )
 from memory.customer_context import build_customer_context, update_customer_state
 from notifications.email_notify import send_reply_approval_email
@@ -140,14 +140,16 @@ async def _handle_admin_registration(user_id: str, text: str, reply_token: str) 
 
 
 async def _notify_admin_handoff(user_id: str, customer_message: str, state: dict | None):
-    """Push a message straight to every registered admin's (Dean's, Pat's)
-    personal Line account with what the customer asked and whatever context is
-    already known about them, so they aren't starting cold."""
-    admins = await get_admin_contacts("line")
-    if not admins:
+    """Push a message straight to Dean's personal Line account with what the
+    customer asked and whatever context is already known about them, so she
+    isn't starting cold. Dean only, not Pat — a "talk to a human" request is
+    specifically asking for the studio owner; form submissions (handled
+    separately in handlers/form_handler.py) notify both of them instead."""
+    admin = await get_admin_contact_by_label("line", "Dean")
+    if not admin:
         logger.warning(
-            "Customer %s requested human handoff but no admin contact is "
-            "registered yet — send '%s' from an admin's Line account to fix this.",
+            "Customer %s requested human handoff but Dean's admin contact isn't "
+            "registered yet — send '%s' from her Line account to fix this.",
             user_id, _ADMIN_REGISTER_PHRASE,
         )
         return
@@ -169,11 +171,10 @@ async def _notify_admin_handoff(user_id: str, customer_message: str, state: dict
         f"วันที่สนใจ: {preferred_date}\n\n"
         f"บอทจะหยุดตอบลูกค้ารายนี้ชั่วคราวจนกว่าจะมีการติดต่อกลับ"
     )
-    for admin in admins:
-        try:
-            await send_line_push(admin["user_id"], message)
-        except Exception:
-            logger.exception("Failed to push handoff notification to %s", admin.get("label"))
+    try:
+        await send_line_push(admin["user_id"], message)
+    except Exception:
+        logger.exception("Failed to push handoff notification to Dean")
 
 
 async def _handle_line_message(user_id: str, text: str, reply_token: str):
