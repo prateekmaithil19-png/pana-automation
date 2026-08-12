@@ -23,18 +23,20 @@ response Sheet — check with whoever manages the Drive folder).
 
 ```javascript
 function onFormSubmit(e) {
+  // This trigger gets the "Form" flavor of the event object (e.source is a
+  // Form — confirmed live, since e.source.getTitle() works but getName()
+  // doesn't), not the "Spreadsheet" flavor — so answers come from
+  // e.response.getItemResponses(), not e.namedValues/e.values (those only
+  // exist on the Spreadsheet-flavored event and are undefined/empty here,
+  // which silently produced an empty answers object and a 400 from the
+  // server: {"detail":"No answers in payload"}).
   var answers = {};
-  var namedValues = e.namedValues;
-  for (var question in namedValues) {
-    answers[question] = namedValues[question][0];
+  var itemResponses = e.response.getItemResponses();
+  for (var i = 0; i < itemResponses.length; i++) {
+    var item = itemResponses[i];
+    answers[item.getItem().getTitle()] = item.getResponse();
   }
 
-  // Use e.source, not SpreadsheetApp.getActiveSpreadsheet() — the latter
-  // returns null for a standalone script's trigger (only works when the
-  // script is bound to the sheet it's running in), which throws
-  // "Cannot read properties of null (reading 'getName')".
-  // e.source is the Form itself here (trigger type is "On form submit"),
-  // not the Spreadsheet — Form objects use getTitle(), not getName().
   var formTitle = e.source.getTitle();
 
   var payload = {
@@ -50,7 +52,9 @@ function onFormSubmit(e) {
   };
 
   var url = "https://pana-studio-bot.onrender.com/webhook/form-submit?token=pana2025studioautomationsecretkey";
-  UrlFetchApp.fetch(url, options);
+  var response = UrlFetchApp.fetch(url, options);
+  Logger.log("Response code: " + response.getResponseCode());
+  Logger.log("Response body: " + response.getContentText());
 }
 ```
 
