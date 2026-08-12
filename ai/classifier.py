@@ -47,6 +47,24 @@ _ESCALATION_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+# Explicit requests to be connected with a human/Dean — distinct from general
+# "are you a bot?" curiosity (that's _CONFIDENTIALITY_PROBE_PATTERNS below, which
+# doesn't need a full handoff, just an honest answer). This is a customer
+# actively asking to be routed to a person, so it should stop AI auto-replies
+# for that conversation until admin (or the follow-up timeout) resumes it.
+_HUMAN_HANDOFF_PATTERNS = re.compile(
+    r"talk to (a )?(human|person|dean|admin|someone|real person|staff)|"
+    r"speak (to|with) (a )?(human|person|dean|admin|someone|real person|staff)|"
+    r"connect me (with|to) (dean|admin|a human|someone|your team)|"
+    r"can i (talk|speak) to dean|"
+    r"i want to (talk|speak|connect) (to|with) (a )?human|"
+    r"ขอคุยกับ(ดีน|แอดมิน|คนจริง|คนจริงๆ|มนุษย์|ทีมงาน)|"
+    r"อยากคุยกับ(ดีน|แอดมิน|คนจริง|คนจริงๆ|มนุษย์|ทีมงาน)|"
+    r"ติดต่อ(ดีน|แอดมิน)โดยตรง|"
+    r"ขอเบอร์(ดีน|แอดมิน)|ต่อสาย(ดีน|แอดมิน)",
+    re.IGNORECASE,
+)
+
 
 def is_pricing_request(message: str, conversation_history: list[dict] | None = None) -> bool:
     if _NOT_PRICE_PATTERNS.search(message):
@@ -80,6 +98,11 @@ def is_escalation_needed(message: str, conversation_history: list[dict] | None =
         if streak >= 3:
             return True
     return False
+
+
+def is_human_handoff_request(message: str) -> bool:
+    """True if the customer is explicitly asking to be connected with a human/Dean."""
+    return bool(_HUMAN_HANDOFF_PATTERNS.search(message))
 
 
 _CONFIDENTIALITY_PROBE_PATTERNS = re.compile(

@@ -8,11 +8,25 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 import config
-from ai.classifier import is_pricing_request, is_escalation_needed, is_confidentiality_probe, detect_language
+from ai.classifier import (
+    is_pricing_request,
+    is_escalation_needed,
+    is_confidentiality_probe,
+    is_human_handoff_request,
+    detect_language,
+)
 from ai.engine import generate_reply, generate_reply_with_image
 from ai.prompts import build_system_prompt
 from approval.store import create_reply_approval
-from database.db import add_message, get_conversation, get_recent_corrections
+from database.db import (
+    add_message,
+    get_conversation,
+    get_recent_corrections,
+    get_customer_state,
+    set_human_controlled,
+    save_admin_contact,
+    get_admin_contact,
+)
 from memory.customer_context import build_customer_context, update_customer_state
 from notifications.email_notify import send_reply_approval_email
 from notifications.line_notify import notify_reply_approval
@@ -22,6 +36,21 @@ router = APIRouter()
 
 _LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply"
 _LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
+
+# One-time admin registration phrase. Dean sends this exact message from her own
+# personal Line account (after adding the OA as a friend) so the bot can capture
+# her userId and push handoff notifications directly to her — no email/Line
+# Notify dependency (Line Notify was discontinued by LINE in March 2025; SMTP
+# isn't configured). Not something a customer would type by accident.
+_ADMIN_REGISTER_PHRASE = "register pana admin"
+
+# Fixed (non-AI-generated) acknowledgment sent the moment a customer asks for a
+# human — deliberately not free-generated so it can never claim an action (like
+# "I've notified Dean") that didn't actually happen.
+_HANDOFF_ACK = {
+    "th": "ได้เลยค่ะ ทางทีมได้รับแจ้งแล้วและจะติดต่อกลับไปนะคะ 🙏 หรือติดต่อดีนได้โดยตรงที่ 065-974-5556 ค่ะ",
+    "en": "Of course! The team has been notified and will follow up with you shortly 🙏 You can also reach Dean directly at 065-974-5556.",
+}
 
 
 def _verify_line_signature(body: bytes, signature: str) -> bool:
@@ -93,12 +122,106 @@ async def _handle_line_image(user_id: str, message_id: str, reply_token: str):
     await update_customer_state("line", user_id, updated_history)
 
 
+async def _handle_admin_registration(user_id: str, text: str, reply_token: str) -> bool:
+    """If this message is the admin-registration phrase, save the sender as the
+    admin contact for handoff notifications and stop further processing.
+    Returns True if this message was consumed as a registration (caller should
+    not treat it as a customer conversation turn)."""
+    if text.strip().lower() != _ADMIN_REGISTER_PHRASE:
+        return False
+
+    await save_admin_contact("line", user_id, label="Dean")
+    await _line_reply(
+        reply_token,
+        "✅ Registered as admin — handoff notifications will be sent here from now on.",
+    )
+    logger.info("Registered admin contact: user_id=%s", user_id)
+    return True
+
+
+async def _notify_admin_handoff(user_id: str, customer_message: str, state: dict | None):
+    """Push a message straight to Dean's personal Line account (via the same
+    push mechanism used for customer replies) with what the customer asked and
+    whatever context is already known about them, so she isn't starting cold."""
+    admin = await get_admin_contact("line")
+    if not admin:
+        logger.warning(
+            "Customer %s requested human handoff but no admin contact is "
+            "registered yet — send '%s' from Dean's Line account to fix this.",
+            user_id, _ADMIN_REGISTER_PHRASE,
+        )
+        return
+
+    state = state or {}
+    customer_name = state.get("customer_name") or "ไม่ทราบชื่อ"
+    shoot_type = state.get("shoot_type") or "-"
+    product_type = state.get("product_type") or "-"
+    num_looks = state.get("num_looks") or "-"
+    preferred_date = state.get("preferred_date") or "-"
+
+    message = (
+        f"🙋 ลูกค้าขอคุยกับคุณโดยตรง\n\n"
+        f"ข้อความล่าสุด: {customer_message}\n\n"
+        f"ชื่อ: {customer_name}\n"
+        f"ประเภทงาน: {shoot_type}\n"
+        f"สินค้า: {product_type}\n"
+        f"จำนวนลุค: {num_looks}\n"
+        f"วันที่สนใจ: {preferred_date}\n\n"
+        f"บอทจะหยุดตอบลูกค้ารายนี้ชั่วคราวจนกว่าคุณจะติดต่อกลับ"
+    )
+    try:
+        await _send_line_push(admin["user_id"], message)
+    except Exception:
+        logger.exception("Failed to push handoff notification to admin")
+
+
+async def _send_line_push(user_id: str, text: str):
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            _LINE_PUSH_URL,
+            headers={"Authorization": f"Bearer {config.LINE_CHANNEL_ACCESS_TOKEN}"},
+            json={"to": user_id, "messages": [{"type": "text", "text": text}]},
+            timeout=10,
+        )
+        resp.raise_for_status()
+
+
 async def _handle_line_message(user_id: str, text: str, reply_token: str):
+    # Check takeover state BEFORE logging this message, so we know whether the
+    # AI was already silent for this customer going into this turn.
+    state_before = await get_customer_state("line", user_id)
+    already_human_controlled = bool(state_before and state_before.get("human_controlled"))
+
     history = await get_conversation("line", user_id)
     await add_message("line", user_id, "customer", text)
 
     # Detect language once — used for prompt bias and fallback message selection
     lang = detect_language(text)
+
+    # Explicit request to be connected with a human — stop AI auto-replies for
+    # this customer and notify Dean directly, with whatever context is known.
+    if is_human_handoff_request(text) and not already_human_controlled:
+        await set_human_controlled("line", user_id, True)
+        await _notify_admin_handoff(user_id, text, state_before)
+
+        ack = _HANDOFF_ACK.get(lang, _HANDOFF_ACK["th"])
+        await _line_reply(reply_token, ack)
+        await add_message("line", user_id, "assistant", ack)
+
+        updated_history = await get_conversation("line", user_id)
+        await update_customer_state("line", user_id, updated_history, force_stage="human_handling")
+        return
+
+    # Already handed off to a human — just log the message, don't auto-reply.
+    # The follow-up scheduler will check back in if Dean hasn't replied after
+    # 24h, or Dean can resolve it directly via LINE / the admin resolve link.
+    if already_human_controlled:
+        logger.info(
+            "Message from %s logged while human_controlled — no AI reply sent",
+            user_id,
+        )
+        return
+
     system_prompt = await _build_prompt(user_id, lang=lang)
 
     # Confidentiality probe — log silently so Deen can review; agent handles it via prompt
@@ -210,12 +333,6 @@ async def line_webhook(request: Request):
     payload = json.loads(body)
 
     for event in payload.get("events", []):
-        # TEMPORARY DIAGNOSTIC — remove after confirming whether LINE sends webhook
-        # events for messages an operator sends manually via LINE Official Account
-        # Manager. Logs every raw event, including ones the code below would
-        # otherwise silently skip.
-        logger.info("[DEBUG WEBHOOK] raw event: %s", json.dumps(event, ensure_ascii=False))
-
         if event.get("type") != "message":
             continue
         msg = event.get("message", {})
@@ -229,6 +346,8 @@ async def line_webhook(request: Request):
             msg_type = msg.get("type")
             if msg_type == "text":
                 text = msg.get("text", "").strip()
+                if text and await _handle_admin_registration(user_id, text, reply_token):
+                    continue  # registration message — not a customer conversation turn
                 if text:
                     await _handle_line_message(user_id, text, reply_token)
             elif msg_type == "image":

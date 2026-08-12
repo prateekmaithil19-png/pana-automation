@@ -66,6 +66,16 @@ async def init_db():
                 follow_up_count INTEGER DEFAULT 0,
                 last_message_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 last_follow_up_at DATETIME,
+                human_controlled INTEGER DEFAULT 0,
+                human_takeover_at DATETIME,
+                PRIMARY KEY (platform, user_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS admin_contacts (
+                platform TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                label TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (platform, user_id)
             );
 
@@ -84,6 +94,7 @@ async def init_db():
         await db.commit()
     await _migrate_existing_tables()
     await _seed_leads()
+    await _seed_admin_contact()
 
 
 async def _migrate_existing_tables():
@@ -93,6 +104,12 @@ async def _migrate_existing_tables():
             existing_cols = {row[1] async for row in cur}
         if "customer_name" not in existing_cols:
             await db.execute("ALTER TABLE customer_state ADD COLUMN customer_name TEXT")
+            await db.commit()
+        if "human_controlled" not in existing_cols:
+            await db.execute("ALTER TABLE customer_state ADD COLUMN human_controlled INTEGER DEFAULT 0")
+            await db.commit()
+        if "human_takeover_at" not in existing_cols:
+            await db.execute("ALTER TABLE customer_state ADD COLUMN human_takeover_at DATETIME")
             await db.commit()
 
 
@@ -155,6 +172,65 @@ async def upsert_customer_state(platform: str, user_id: str, **fields):
                 [*safe.values(), platform, user_id],
             )
         await db.commit()
+
+
+async def set_human_controlled(platform: str, user_id: str, controlled: bool):
+    """Turn AI auto-reply off (controlled=True) or back on (controlled=False) for a customer."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        if controlled:
+            await db.execute(
+                """UPDATE customer_state
+                   SET human_controlled=1, human_takeover_at=CURRENT_TIMESTAMP
+                   WHERE platform=? AND user_id=?""",
+                (platform, user_id),
+            )
+        else:
+            await db.execute(
+                """UPDATE customer_state
+                   SET human_controlled=0, human_takeover_at=NULL
+                   WHERE platform=? AND user_id=?""",
+                (platform, user_id),
+            )
+        await db.commit()
+
+
+async def get_human_controlled_idle(platform: str = "line", hours: int = 24) -> list[dict]:
+    """Return customers currently marked human_controlled whose last message is
+    `hours`+ old — i.e. admin hasn't followed up and it's time for the AI to
+    check back in."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT * FROM customer_state
+               WHERE platform=? AND human_controlled=1
+               AND last_message_at < datetime('now', ?)
+               ORDER BY last_message_at ASC""",
+            (platform, f"-{hours} hours"),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def save_admin_contact(platform: str, user_id: str, label: str = "Dean"):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO admin_contacts (platform, user_id, label)
+               VALUES (?, ?, ?)
+               ON CONFLICT(platform, user_id) DO UPDATE SET label=excluded.label""",
+            (platform, user_id, label),
+        )
+        await db.commit()
+
+
+async def get_admin_contact(platform: str = "line") -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM admin_contacts WHERE platform=? ORDER BY created_at DESC LIMIT 1",
+            (platform,),
+        ) as cur:
+            row = await cur.fetchone()
+    return dict(row) if row else None
 
 
 async def mark_followup_sent(platform: str, user_id: str, new_count: int, new_stage: str):
@@ -424,6 +500,15 @@ async def delete_lead(lead_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM leads WHERE id=?", (lead_id,))
         await db.commit()
+
+
+async def _seed_admin_contact():
+    """Seed Dean's Line userId as the default handoff-notification recipient,
+    captured from her LOAM chat URL. Safe to run on every startup — this is a
+    plain upsert keyed on (platform, user_id), so it never creates duplicates
+    and a later re-registration (via the "register pana admin" phrase) with a
+    different userId simply takes over as the newest admin contact."""
+    await save_admin_contact("line", "Uf7f5f04fe8cd9363d0dfad787c83daa7", label="Dean")
 
 
 async def _seed_leads():

@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 import config
-from database.db import add_message, get_approval, save_correction_example, update_approval, update_post_status
+from database.db import add_message, get_approval, save_correction_example, update_approval, update_post_status, set_human_controlled
 from memory.customer_context import update_customer_state
 
 router = APIRouter()
@@ -97,6 +97,15 @@ async def quick_action(approval_id: str, action: str):
         return HTMLResponse("<h2>❌ ยกเลิกแล้ว</h2><p>ข้อความถูกยกเลิกค่ะ</p>")
 
     raise HTTPException(status_code=400, detail="Invalid action")
+
+
+@router.get("/admin/resolve-handoff")
+async def resolve_handoff(platform: str, user_id: str):
+    """Dean taps this (e.g. from the handoff push message) once she's handled a
+    customer directly, to hand control back to the AI without waiting for the
+    24h auto-resume."""
+    await set_human_controlled(platform, user_id, False)
+    return HTMLResponse("<h2>✅ Resumed</h2><p>บอทจะกลับมาตอบลูกค้ารายนี้ตามปกติค่ะ</p>")
 
 
 @router.post("/approve/{approval_id}/submit")

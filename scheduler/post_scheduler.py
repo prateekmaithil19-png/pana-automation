@@ -167,8 +167,9 @@ def _refresh_dates():
 
 def _run_followups():
     import asyncio
-    from scheduler.followup_scheduler import check_and_send_followups
+    from scheduler.followup_scheduler import check_and_send_followups, check_and_resume_handoffs
     asyncio.create_task(check_and_send_followups())
+    asyncio.create_task(check_and_resume_handoffs())
 
 
 def stop_scheduler():
