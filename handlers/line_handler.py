@@ -210,6 +210,12 @@ async def line_webhook(request: Request):
     payload = json.loads(body)
 
     for event in payload.get("events", []):
+        # TEMPORARY DIAGNOSTIC — remove after confirming whether LINE sends webhook
+        # events for messages an operator sends manually via LINE Official Account
+        # Manager. Logs every raw event, including ones the code below would
+        # otherwise silently skip.
+        logger.info("[DEBUG WEBHOOK] raw event: %s", json.dumps(event, ensure_ascii=False))
+
         if event.get("type") != "message":
             continue
         msg = event.get("message", {})
