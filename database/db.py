@@ -445,21 +445,49 @@ async def get_approved_posts() -> list[dict]:
 
 # ── Leads CRM ────────────────────────────────────────────────────────────────
 
-async def get_leads(status: str | None = None) -> list[dict]:
+async def get_leads(
+    status: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> list[dict]:
+    """contact_date is stored as free-text 'YYYY-MM-DD' (or blank for a few
+    seeded rows with no date) — date_from/date_to do a plain string comparison,
+    which works correctly for ISO-formatted dates. Blank-date rows only show
+    up when no date range is applied."""
+    clauses = []
+    params: list = []
+    if status and status != "all":
+        clauses.append("status=?")
+        params.append(status)
+    if date_from:
+        clauses.append("contact_date>=?")
+        params.append(date_from)
+    if date_to:
+        clauses.append("contact_date<=?")
+        params.append(date_to)
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        if status and status != "all":
-            async with db.execute(
-                "SELECT * FROM leads WHERE status=? ORDER BY contact_date DESC, id DESC",
-                (status,),
-            ) as cur:
-                rows = await cur.fetchall()
-        else:
-            async with db.execute(
-                "SELECT * FROM leads ORDER BY contact_date DESC, id DESC"
-            ) as cur:
-                rows = await cur.fetchall()
+        async with db.execute(
+            f"SELECT * FROM leads {where} ORDER BY contact_date DESC, id DESC",
+            params,
+        ) as cur:
+            rows = await cur.fetchall()
     return [dict(r) for r in rows]
+
+
+async def get_lead_months() -> list[str]:
+    """Distinct 'YYYY-MM' values present in leads.contact_date, newest first —
+    used to populate the "jump to month" filter dropdown."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT DISTINCT substr(contact_date, 1, 7) AS ym FROM leads
+               WHERE contact_date != '' AND length(contact_date) >= 7
+               ORDER BY ym DESC"""
+        ) as cur:
+            rows = await cur.fetchall()
+    return [r[0] for r in rows]
 
 
 async def add_lead(data: dict) -> int:
