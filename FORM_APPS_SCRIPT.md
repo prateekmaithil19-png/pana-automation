@@ -33,7 +33,9 @@ function onFormSubmit(e) {
   // returns null for a standalone script's trigger (only works when the
   // script is bound to the sheet it's running in), which throws
   // "Cannot read properties of null (reading 'getName')".
-  var formTitle = e.source.getName();
+  // e.source is the Form itself here (trigger type is "On form submit"),
+  // not the Spreadsheet — Form objects use getTitle(), not getName().
+  var formTitle = e.source.getTitle();
 
   var payload = {
     form_title: formTitle,
