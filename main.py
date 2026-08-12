@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from approval.router import router as approval_router
 from database.db import init_db, get_upcoming_posts, get_next_suggested_slot
 from handlers.announce_handler import router as announce_router
+from handlers.form_handler import router as form_router
 from handlers.leads_handler import router as leads_router
 from handlers.line_handler import router as line_router
 from handlers.meta_handler import router as meta_router
@@ -52,6 +53,7 @@ app.include_router(approval_router)
 app.include_router(skills_router)
 app.include_router(leads_router)
 app.include_router(announce_router)
+app.include_router(form_router)
 
 # Serve uploaded media files publicly (needed for Instagram image URLs)
 app.mount("/media", StaticFiles(directory=UPLOAD_DIR), name="media")

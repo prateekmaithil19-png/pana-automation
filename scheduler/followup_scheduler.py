@@ -7,9 +7,6 @@ Max 2 follow-ups per customer, then stage is set to 'cold'.
 
 import logging
 
-import httpx
-
-import config
 from ai.engine import generate_reply
 from database.db import (
     get_customers_needing_followup,
@@ -17,10 +14,9 @@ from database.db import (
     get_human_controlled_idle,
     set_human_controlled,
 )
+from notifications.line_push import send_line_push
 
 logger = logging.getLogger(__name__)
-
-_LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 
 _RESUME_SYSTEM = """You are a friendly admin assistant for Pana Studio — a commercial photography studio in Bangkok, Thailand.
 
@@ -80,17 +76,6 @@ async def _generate_followup_message(state: dict) -> str:
     return msg.strip()
 
 
-async def _send_line_push(user_id: str, text: str):
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            _LINE_PUSH_URL,
-            headers={"Authorization": f"Bearer {config.LINE_CHANNEL_ACCESS_TOKEN}"},
-            json={"to": user_id, "messages": [{"type": "text", "text": text}]},
-            timeout=10,
-        )
-        resp.raise_for_status()
-
-
 async def check_and_send_followups():
     """Main entry point — find quiet customers and send personalized follow-ups."""
     try:
@@ -113,7 +98,7 @@ async def check_and_send_followups():
 
         try:
             message = await _generate_followup_message(state)
-            await _send_line_push(user_id, message)
+            await send_line_push(user_id, message)
             await mark_followup_sent("line", user_id, new_count, new_stage)
             logger.info(
                 "Follow-up #%d sent to %s (stage → %s): %r",
@@ -154,7 +139,7 @@ async def check_and_resume_handoffs():
         user_id = state["user_id"]
         try:
             message = await _generate_resume_message(state)
-            await _send_line_push(user_id, message)
+            await send_line_push(user_id, message)
             await set_human_controlled("line", user_id, False)
             logger.info(
                 "Resumed AI for %s after 24h+ with no admin follow-up: %r",

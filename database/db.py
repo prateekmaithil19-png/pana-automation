@@ -223,6 +223,10 @@ async def save_admin_contact(platform: str, user_id: str, label: str = "Dean"):
 
 
 async def get_admin_contact(platform: str = "line") -> dict | None:
+    """Return the most-recently-registered admin contact only. Kept for callers
+    that just need one recipient — most notification code should use
+    get_admin_contacts() below so every registered admin (e.g. Dean and Pat)
+    gets notified, not just whoever registered last."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -231,6 +235,18 @@ async def get_admin_contact(platform: str = "line") -> dict | None:
         ) as cur:
             row = await cur.fetchone()
     return dict(row) if row else None
+
+
+async def get_admin_contacts(platform: str = "line") -> list[dict]:
+    """Return every registered admin contact for a platform (e.g. Dean and Pat)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM admin_contacts WHERE platform=? ORDER BY created_at ASC",
+            (platform,),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [dict(r) for r in rows]
 
 
 async def mark_followup_sent(platform: str, user_id: str, new_count: int, new_stage: str):
@@ -503,12 +519,13 @@ async def delete_lead(lead_id: int):
 
 
 async def _seed_admin_contact():
-    """Seed Dean's Line userId as the default handoff-notification recipient,
-    captured from her LOAM chat URL. Safe to run on every startup — this is a
-    plain upsert keyed on (platform, user_id), so it never creates duplicates
-    and a later re-registration (via the "register pana admin" phrase) with a
-    different userId simply takes over as the newest admin contact."""
+    """Seed Dean's and Pat's Line userIds as default handoff-notification
+    recipients, captured from their LOAM chat URLs. Safe to run on every
+    startup — plain upserts keyed on (platform, user_id), so they never create
+    duplicates. Anyone can also self-register later via the
+    "register pana admin" phrase, which just adds another row."""
     await save_admin_contact("line", "Uf7f5f04fe8cd9363d0dfad787c83daa7", label="Dean")
+    await save_admin_contact("line", "Ub0ff27fcafa7fe69d5a61fc1fc0ccfe6", label="Pat")
 
 
 async def _seed_leads():

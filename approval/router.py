@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 import config
 from database.db import add_message, get_approval, save_correction_example, update_approval, update_post_status, set_human_controlled
 from memory.customer_context import update_customer_state
+from notifications.line_push import send_line_push
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -30,23 +31,12 @@ async def _send_meta_reply(platform: str, user_id: str, text: str):
         resp.raise_for_status()
 
 
-async def _send_line_push(user_id: str, text: str):
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            "https://api.line.me/v2/bot/message/push",
-            headers={"Authorization": f"Bearer {config.LINE_CHANNEL_ACCESS_TOKEN}"},
-            json={"to": user_id, "messages": [{"type": "text", "text": text}]},
-            timeout=10,
-        )
-        resp.raise_for_status()
-
-
 async def _deliver_reply(approval: dict, final_text: str):
     """Send the approved reply to the customer and record it in conversation history."""
     platform = approval.get("platform", "")
     user_id = approval.get("user_id", "")
     if platform == "line":
-        await _send_line_push(user_id, final_text)
+        await send_line_push(user_id, final_text)
     else:
         await _send_meta_reply(platform, user_id, final_text)
 

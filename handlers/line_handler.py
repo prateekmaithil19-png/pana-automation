@@ -25,17 +25,17 @@ from database.db import (
     get_customer_state,
     set_human_controlled,
     save_admin_contact,
-    get_admin_contact,
+    get_admin_contacts,
 )
 from memory.customer_context import build_customer_context, update_customer_state
 from notifications.email_notify import send_reply_approval_email
 from notifications.line_notify import notify_reply_approval
+from notifications.line_push import send_line_push
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply"
-_LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 
 # One-time admin registration phrase. Dean sends this exact message from her own
 # personal Line account (after adding the OA as a friend) so the bot can capture
@@ -140,14 +140,14 @@ async def _handle_admin_registration(user_id: str, text: str, reply_token: str) 
 
 
 async def _notify_admin_handoff(user_id: str, customer_message: str, state: dict | None):
-    """Push a message straight to Dean's personal Line account (via the same
-    push mechanism used for customer replies) with what the customer asked and
-    whatever context is already known about them, so she isn't starting cold."""
-    admin = await get_admin_contact("line")
-    if not admin:
+    """Push a message straight to every registered admin's (Dean's, Pat's)
+    personal Line account with what the customer asked and whatever context is
+    already known about them, so they aren't starting cold."""
+    admins = await get_admin_contacts("line")
+    if not admins:
         logger.warning(
             "Customer %s requested human handoff but no admin contact is "
-            "registered yet — send '%s' from Dean's Line account to fix this.",
+            "registered yet — send '%s' from an admin's Line account to fix this.",
             user_id, _ADMIN_REGISTER_PHRASE,
         )
         return
@@ -167,23 +167,13 @@ async def _notify_admin_handoff(user_id: str, customer_message: str, state: dict
         f"สินค้า: {product_type}\n"
         f"จำนวนลุค: {num_looks}\n"
         f"วันที่สนใจ: {preferred_date}\n\n"
-        f"บอทจะหยุดตอบลูกค้ารายนี้ชั่วคราวจนกว่าคุณจะติดต่อกลับ"
+        f"บอทจะหยุดตอบลูกค้ารายนี้ชั่วคราวจนกว่าจะมีการติดต่อกลับ"
     )
-    try:
-        await _send_line_push(admin["user_id"], message)
-    except Exception:
-        logger.exception("Failed to push handoff notification to admin")
-
-
-async def _send_line_push(user_id: str, text: str):
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            _LINE_PUSH_URL,
-            headers={"Authorization": f"Bearer {config.LINE_CHANNEL_ACCESS_TOKEN}"},
-            json={"to": user_id, "messages": [{"type": "text", "text": text}]},
-            timeout=10,
-        )
-        resp.raise_for_status()
+    for admin in admins:
+        try:
+            await send_line_push(admin["user_id"], message)
+        except Exception:
+            logger.exception("Failed to push handoff notification to %s", admin.get("label"))
 
 
 async def _handle_line_message(user_id: str, text: str, reply_token: str):
