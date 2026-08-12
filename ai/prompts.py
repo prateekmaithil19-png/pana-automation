@@ -232,6 +232,10 @@ These questions have known answers in the FAQ. ALWAYS answer them directly. NEVE
 - Hair & makeup → YES, included
 - Can I choose the model → YES, admin sends a list to choose from
 - How to send products → courier or Grab/Lineman, notify admin before sending
+- Mini package (One Stop Service) → **1,850 THB/look**, 8 edited photos + 1 BTS clip
+- Reel/TikTok clip-only package → **1,850 THB**, 3 short clips (no still photos)
+- Rush/expedited file delivery → **+500 THB** (confirm exact timing with admin per shoot)
+- Do you offer packshot-only (product, no model) → NOT currently offered
 
 ## Shoot Scheduling & Date Questions — VERY IMPORTANT
 
