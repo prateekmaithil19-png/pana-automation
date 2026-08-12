@@ -1,12 +1,11 @@
-import re
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from ai.engine import generate_reply
-from database.db import add_lead, delete_lead, get_leads, get_lead_months, update_lead, update_lead_status
+from database.db import add_lead, delete_lead, get_leads, update_lead, update_lead_status
 from skills import build_lead_prompt
 
 router = APIRouter(prefix="/leads")
@@ -14,30 +13,18 @@ templates = Jinja2Templates(directory="templates")
 
 STATUSES = ["all", "new", "follow_up", "in_progress", "paid", "rejected", "no_response"]
 
-_YEAR_MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
-
 
 def _period_bounds(period: str) -> tuple[str | None, str | None]:
     """Returns (date_from, date_to) as 'YYYY-MM-DD' strings, or (None, None)
     for 'all' — no filtering, so blank-date historical rows still show up."""
-    now = datetime.utcnow()
-    if period == "this_month":
-        start = now.replace(day=1)
-        return start.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d")
-    if period == "last_month":
-        first_this = now.replace(day=1)
-        last_month_end = first_this - timedelta(days=1)
-        last_month_start = last_month_end.replace(day=1)
-        return last_month_start.strftime("%Y-%m-%d"), last_month_end.strftime("%Y-%m-%d")
     if period == "this_year":
+        now = datetime.utcnow()
         return now.strftime("%Y-01-01"), now.strftime("%Y-%m-%d")
-    if _YEAR_MONTH_RE.match(period):
-        return f"{period}-01", f"{period}-31"
     return None, None  # "all" or unrecognized
 
 
 @router.get("", response_class=HTMLResponse)
-async def leads_list(request: Request, status: str = "all", period: str = "this_month"):
+async def leads_list(request: Request, status: str = "all", period: str = "this_year"):
     date_from, date_to = _period_bounds(period)
     leads = await get_leads(status if status != "all" else None, date_from, date_to)
 
@@ -45,8 +32,6 @@ async def leads_list(request: Request, status: str = "all", period: str = "this_
     for s in STATUSES[1:]:
         counts[s] = len(await get_leads(s, date_from, date_to))
     counts["all"] = sum(counts.values())
-
-    months = await get_lead_months()
 
     return templates.TemplateResponse(
         "leads.html",
@@ -56,7 +41,6 @@ async def leads_list(request: Request, status: str = "all", period: str = "this_
             "active_status": status,
             "active_period": period,
             "counts": counts,
-            "months": months,
         },
     )
 

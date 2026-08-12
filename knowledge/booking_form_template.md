@@ -8,7 +8,7 @@ It's split into two parts:
 
 **Workflow for each new shoot:**
 1. Update the PER-SHOOT FIELDS block below with the new event's details.
-2. In Google Drive, open the most recent shoot's form → **File → Make a copy** → rename (e.g. "Beach - 28 Aug").
+2. In Google Drive, open the most recent shoot's form → **File → Make a copy** → rename (e.g. "Beach - 28 Aug").how about 
 3. Paste the updated PER-SHOOT FIELDS block into the new form's date/model section (static content/questions stay as-is — don't touch them).
 4. Attach the model's comp-card photos manually (not automatable from here).
 5. Get the **public share link** via the form's **Send → link icon** — must start `docs.google.com/forms/d/e/...` and end `/viewform`. Do NOT share the `/edit` or `/preview` link — both require owner access and will 401 for customers.

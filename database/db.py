@@ -477,19 +477,6 @@ async def get_leads(
     return [dict(r) for r in rows]
 
 
-async def get_lead_months() -> list[str]:
-    """Distinct 'YYYY-MM' values present in leads.contact_date, newest first —
-    used to populate the "jump to month" filter dropdown."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            """SELECT DISTINCT substr(contact_date, 1, 7) AS ym FROM leads
-               WHERE contact_date != '' AND length(contact_date) >= 7
-               ORDER BY ym DESC"""
-        ) as cur:
-            rows = await cur.fetchall()
-    return [r[0] for r in rows]
-
-
 async def add_lead(data: dict) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(

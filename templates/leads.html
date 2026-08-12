@@ -35,23 +35,14 @@ tr:hover td { background:#fafafa; }
     <button onclick="document.getElementById('addModal').classList.add('open')" class="btn btn-blue">+ เพิ่ม Lead</button>
   </div>
 
-  <!-- Period filter — defaults to this month so old seeded leads don't clutter the view -->
+  <!-- Period filter — defaults to this year so old seeded leads don't clutter the view -->
   <div style="margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
-    {% set period_labels = {"this_month":"เดือนนี้","last_month":"เดือนที่แล้ว","this_year":"ปีนี้","all":"ทั้งหมด"} %}
-    {% for p in ["this_month","last_month","this_year","all"] %}
+    {% set period_labels = {"this_year":"ปีนี้","all":"ทั้งหมด"} %}
+    {% for p in ["this_year","all"] %}
     <a href="/leads?status={{ active_status }}&period={{ p }}" class="filter-btn {% if active_period == p %}active{% endif %}">
       {{ period_labels[p] }}
     </a>
     {% endfor %}
-    {% if months %}
-    <select onchange="if(this.value) window.location='/leads?status={{ active_status }}&period=' + this.value;"
-      style="border:1.5px solid #e5e7eb;border-radius:20px;padding:6px 12px;font-size:13px;font-weight:600;color:#374151;cursor:pointer;">
-      <option value="">📅 ไปเดือนอื่น...</option>
-      {% for m in months %}
-      <option value="{{ m }}" {% if active_period == m %}selected{% endif %}>{{ m }}</option>
-      {% endfor %}
-    </select>
-    {% endif %}
   </div>
 
   <!-- Status filter tabs -->
