@@ -24,7 +24,9 @@ _FB_POSTS_URL = "https://graph.facebook.com/v19.0/{page_id}/posts"
 _IG_MEDIA_URL = "https://graph.facebook.com/v19.0/{ig_user_id}/media"
 
 
-async def _fetch_facebook_posts() -> list[str]:
+async def _fetch_facebook_posts() -> list[str] | None:
+    """Returns None on fetch failure (distinct from a successful fetch that found
+    zero posts) so the caller doesn't confuse "API broken" with "nothing to report"."""
     try:
         url = _FB_POSTS_URL.format(page_id=config.META_PAGE_ID)
         async with httpx.AsyncClient() as client:
@@ -45,10 +47,11 @@ async def _fetch_facebook_posts() -> list[str]:
         ]
     except Exception as e:
         logger.warning("Facebook posts fetch failed: %s", e)
-        return []
+        return None
 
 
-async def _fetch_instagram_captions() -> list[str]:
+async def _fetch_instagram_captions() -> list[str] | None:
+    """Returns None on fetch failure — see _fetch_facebook_posts docstring."""
     try:
         url = _IG_MEDIA_URL.format(ig_user_id=config.META_IG_USER_ID)
         async with httpx.AsyncClient() as client:
@@ -69,7 +72,7 @@ async def _fetch_instagram_captions() -> list[str]:
         ]
     except Exception as e:
         logger.warning("Instagram captions fetch failed: %s", e)
-        return []
+        return None
 
 
 async def _extract_dates_with_llm(posts_text: str, current_month_year: str) -> str:
@@ -144,10 +147,21 @@ async def refresh_upcoming_dates():
 
     fb_posts = await _fetch_facebook_posts()
     ig_posts = await _fetch_instagram_captions()
-    all_posts = fb_posts + ig_posts
+
+    if fb_posts is None and ig_posts is None:
+        # Both sources failed outright (e.g. expired META_PAGE_ACCESS_TOKEN) —
+        # leave the existing file alone rather than overwriting curated/manual
+        # content with a false "no dates announced" message.
+        logger.warning(
+            "Both Facebook and Instagram fetches failed — leaving %s untouched",
+            _DATES_FILE,
+        )
+        return
+
+    all_posts = (fb_posts or []) + (ig_posts or [])
 
     if not all_posts:
-        logger.info("No posts fetched — writing no-dates file")
+        logger.info("Fetch succeeded but found no posts — writing no-dates file")
         _write_no_dates(current_month_year)
         return
 
