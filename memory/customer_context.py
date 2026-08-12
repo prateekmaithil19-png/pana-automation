@@ -27,6 +27,15 @@ _PRODUCT_TYPE = re.compile(
     r"ว่ายน้ำ|swimwear|lingerie|ชุดชั้นใน|jewelry|เครื่องประดับ|accessories)",
     re.IGNORECASE,
 )
+# Fallback for branded/novel product names the keyword whitelist above won't catch
+# (e.g. "My product is Face Glow" — "Face Glow" isn't a generic category word).
+# Only used when _PRODUCT_TYPE finds nothing, so it doesn't override a clean category match.
+_PRODUCT_DECLARATION = re.compile(
+    r"(?:(?:my|our)\s+product\s+is|product\s+(?:name\s+)?is|"
+    r"สินค้าคือ|สินค้าของ(?:เรา|ผม|ฉัน)คือ|แบรนด์คือ|ชื่อแบรนด์คือ)"
+    r"\s+([A-Za-zก-๙][\w ก-๙]{1,30}?)(?:[.,!?\n]|$)",
+    re.IGNORECASE,
+)
 _DATE_PATTERN = re.compile(
     r"\d{1,2}[/\-\.]\d{1,2}(?:[/\-\.]\d{2,4})?|"
     r"วันที่\s*\d+\s*\w+|"
@@ -84,6 +93,10 @@ def _extract_facts(messages: list[str]) -> dict:
     product_matches = list({m.group(0).lower() for m in _PRODUCT_TYPE.finditer(combined)})
     if product_matches:
         facts["product_type"] = ", ".join(product_matches[:3])
+    else:
+        decl_match = _PRODUCT_DECLARATION.search(combined)
+        if decl_match:
+            facts["product_type"] = decl_match.group(1).strip()
 
     date_matches = _DATE_PATTERN.findall(combined)
     flat = [d if isinstance(d, str) else next((x for x in d if x), "") for d in date_matches]
