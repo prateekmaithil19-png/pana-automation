@@ -24,12 +24,13 @@ GitHub: `https://github.com/prateekmaithil19-png/pana-automation`
 - **Render.com** free tier — hosting (kept awake by SleepNoMore pinging `/health` every 8 min)
 
 ### Multi-LLM fallback chain
-Order: `gemini → pateway → openai → claude` (configured via `LLM_PROVIDERS` env var)
+Order: `gemini → pateway → openai → claude → kimchi` (configured via `LLM_PROVIDERS` env var)
 
 - **Gemini** (`gemini-flash-latest`) — primary, 20 req/day free tier
 - **Pateway** (`gpt-5.5`) — second, OpenAI-compatible at `https://api.pateway.ai/v1`
 - **OpenAI** (`gpt-4o-mini`) — third
-- **Claude** (`claude-3-5-sonnet-20241022`) — last resort
+- **Claude** (`claude-3-5-sonnet-20241022`) — fourth
+- **Kimchi** (`kimchi-large`) — backup/last resort, OpenAI-compatible at `https://api.kimchi.dev/v1`
 
 ---
 
@@ -135,7 +136,10 @@ OPENAI_API_KEY
 PATEWAY_API_KEY
 PATEWAY_BASE_URL=https://api.pateway.ai/v1
 ANTHROPIC_API_KEY
-LLM_PROVIDERS=gemini,pateway,openai,claude
+KIMCHI_API_KEY
+KIMCHI_BASE_URL=https://api.kimchi.dev/v1
+KIMCHI_MODEL=kimchi-large
+LLM_PROVIDERS=gemini,pateway,openai,claude,kimchi
 
 # Meta (Facebook + Instagram)
 META_APP_ID=28212985095056808

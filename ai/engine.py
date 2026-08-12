@@ -152,6 +152,40 @@ async def _call_pateway(
         return data.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
 
 
+async def _call_kimchi(
+    customer_message: str,
+    conversation_history: list[dict],
+    system_prompt: str,
+    max_tokens: int,
+) -> str:
+    if not config.KIMCHI_API_KEY:
+        raise ValueError("KIMCHI_API_KEY is missing or empty")
+
+    base_url = config.KIMCHI_BASE_URL.rstrip("/")
+    url = f"{base_url}/chat/completions"
+    messages = _format_openai_messages(customer_message, conversation_history, system_prompt)
+
+    payload = {
+        "model": config.KIMCHI_MODEL,
+        "messages": messages,
+        "max_tokens": max_tokens,
+    }
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {config.KIMCHI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=15.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
+
+
 async def _call_openai(
     customer_message: str,
     conversation_history: list[dict],
@@ -232,6 +266,7 @@ async def generate_reply(
         "pateway": _call_pateway,
         "openai": _call_openai,
         "claude": _call_claude,
+        "kimchi": _call_kimchi,
     }
 
     for provider in providers:

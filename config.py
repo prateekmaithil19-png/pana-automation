@@ -13,7 +13,10 @@ PATEWAY_BASE_URL = os.getenv("PATEWAY_BASE_URL", "https://api.pateway.ai/v1")
 PATEWAY_MODEL = os.getenv("PATEWAY_MODEL", "gpt-5.5")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
-LLM_PROVIDERS = os.getenv("LLM_PROVIDERS", "gemini,pateway,openai,claude")
+KIMCHI_API_KEY = os.getenv("KIMCHI_API_KEY", "")
+KIMCHI_BASE_URL = os.getenv("KIMCHI_BASE_URL", "https://api.kimchi.dev/v1")
+KIMCHI_MODEL = os.getenv("KIMCHI_MODEL", "kimchi-large")
+LLM_PROVIDERS = os.getenv("LLM_PROVIDERS", "gemini,pateway,openai,claude,kimchi")
 
 # Meta
 META_APP_ID = os.environ["META_APP_ID"]
